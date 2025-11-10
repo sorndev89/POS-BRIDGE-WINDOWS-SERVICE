@@ -1,0 +1,29 @@
+{
+  "name": "service-print-pos-app",
+  "version": "1.0.4",
+  "description": "Smart Bridge App for Vue POS (Standalone Executable)",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "build": "pkg package.json --targets node18-win-x64 --output PosBridge.exe"
+  },
+  "bin": {
+    "posbridge": "server.js"
+  },
+  "pkg": {
+    "scripts": "server.js",
+    "assets": []
+  },
+  "dependencies": {
+    "body-parser": "^1.20.2",
+    "cors": "^2.8.5",
+    "escpos": "^3.0.0-alpha.6",
+    "escpos-usb": "^3.0.0-alpha.4",
+    "express": "^4.19.2",
+    "pdf-to-printer": "^5.6.0",
+    "fs": "0.0.1-security"
+  },
+  "devDependencies": {
+    "pkg": "^5.8.1"
+  }
+}
