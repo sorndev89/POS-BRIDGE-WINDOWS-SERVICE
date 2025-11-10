@@ -1,0 +1,89 @@
+ຕາມການຕັດສິນໃຈຂອງທ່ານທີ່ຈະສືບຕໍ່ພັດທະນາ POS Bridge ດ້ວຍ Flutter ເພື່ອຮອງຮັບຫລາຍ Platforms (Mobile/Desktop), ນີ້ແມ່ນບົດສະຫຼຸບໂຄງການ, ໂຄງສ້າງ, ແລະ ຂັ້ນຕອນການເຮັດວຽກທີ່ສົມບູນແບບ.
+
+ທ່ານສາມາດນຳໃຊ້ເອກະສານນີ້ສຳລັບການພັດທະນາໃນອະນາຄົດ.
+
+============================================================
+ເອກະສານ Flutter Multi-Platform Bridge (Android/iOS/Desktop)
+ວິທີການ: Flutter + Local Server (Shelf) + Bluetooth/Hardware APIs
+============================================================
+
+I. ແນວຄິດຫຼັກ (Core Concept)
+
+* ເປົ້າໝາຍ: ສ້າງ Bridge ທີ່ແລ່ນໄດ້ໃນທຸກ Platform ເພື່ອຮັບຄຳສັ່ງພິມ API (HTTP POST) ຈາກ Vue/Web App ທີ່ແລ່ນຢູ່ໃນ Browser/Webview.
+* ການສື່ສານ: Vue App ສົ່ງຄຳສັ່ງໄປທີ່: http://localhost:9100.
+* ການພິມ: Flutter App ຕ້ອງຈັດການການດາວໂຫຼດ PDF ແລະ ການປ່ຽນເປັນຮູບພາບ/Bytes ເພື່ອສົ່ງໄປຫາ Printer ຜ່ານ Bluetooth/USB.
+
+---
+
+II. ໂຄງສ້າງ Folder ໂຄງການ (Project Structure)
+
+flutter_pos_bridge/
+├── android/            # (Native Files: ສໍາຄັນສຳລັບ Background Service & Permissions)
+├── ios/                # (Native Files: ສໍາຄັນສຳລັບ Bluetooth & Permissions)
+├── lib/                # (DART CODE - Logic ຫຼັກຂອງ Bridge)
+│   ├── main.dart       # (ເລີ່ມຕົ້ນ App ແລະ Local Server)
+│   ├── pubspec.yaml    # (Dependencies ຂອງ Flutter/Dart)
+│   ├── models/
+│   │   └── print_job.dart  # (Dart Class ສໍາລັບຂໍ້ມູນທີ່ຮັບມາຈາກ Vue)
+│   └── services/       # (Business Logic/Hardware)
+│       ├── local_server.dart  # (Local HTTP Server on Port 9100)
+│       └── bluetooth_printer.dart # (Logic ຄວບຄຸມ Printer ຜ່ານ Bluetooth/APIs)
+└── pubspec.lock
+
+---
+
+III. Dependencies ຫຼັກ (pubspec.yaml)
+
+Dependencies ເຫຼົ່ານີ້ແມ່ນສຳຄັນຕໍ່ການເຮັດວຽກຂອງ Local Server ແລະ Hardware:
+
+dependencies:
+  flutter:
+    sdk: flutter
+  
+  # 1. Local Server (Bridge API)
+  shelf: ^1.4.1                
+  shelf_router: ^1.1.2
+  
+  # 2. Network & File Handling (Download PDF)
+  dio: ^5.4.3                     
+  path_provider: ^2.1.3           
+  
+  # 3. Printing/Bluetooth (ເລືອກຕາມຄວາມເໝາະສົມ)
+  flutter_bluetooth_basic: ^1.0.1 
+  # ຫຼືໃຊ້ flutter_blue_plus ສໍາລັບ Bluetooth LE
+  # ຫຼື flutter_escpos_thermal ສໍາລັບ ESC/POS
+IV. ລາຍລະອຽດ Code Logic ທີ່ສຳຄັນ
+
+A. lib/services/local_server.dart (Bridge Core)
+
+ຫນ້າທີ່: ເປີດ HTTP Port 9100 ຢູ່ໃນອຸປະກອນ.
+
+Implementation: ໃຊ້ shelf_io.serve() ທີ່ InternetAddress.loopbackIPv4 (127.0.0.1) ເພື່ອຮັບສະເພາະການເຊື່ອມຕໍ່ພາຍໃນເຄື່ອງ.
+
+Endpoints: ຕ້ອງມີ /print/pdf-url (POST) ແລະ /list-printers (GET).
+
+ການປະຕິບັດ: ຮັບຄໍາສັ່ງ, ໃຊ້ Dio ດາວໂຫຼດ PDF ຈາກ URL, ແລ້ວສົ່ງ Data ໄປຫາ BluetoothPrinterService.
+
+B. lib/services/bluetooth_printer.dart (Hardware Control)
+
+ຫນ້າທີ່: ແປງ Data ແລະ ສົ່ງໄປຫາ Hardware.
+
+ການຈັດການ PDF: ຕ້ອງໃຊ້ PDF Library (ເຊັ່ນ pdf.dart) ເພື່ອປ່ຽນ PDF ໃຫ້ເປັນ Bitmap/Image, ເພາະ Printer ຄວາມຮ້ອນ (Thermal Printer) ສ່ວນໃຫຍ່ພິມໄດ້ແຕ່ຮູບພາບ ຫຼື ESC/POS Commands.
+
+ການສື່ສານ: ໃຊ້ Bluetooth Plugins ເພື່ອເຊື່ອມຕໍ່ກັບ Printer ຕາມ Address ທີ່ Vue ສົ່ງມາ.
+
+C. android/AndroidManifest.xml (Native Permissions)
+
+ຕ້ອງເພີ່ມ Permissions ເພື່ອໃຫ້ສາມາດໃຊ້ Bluetooth, Internet, ແລະ ແລ່ນ Service ໃນ Background.
+
+ຕ້ອງພິຈາລະນາການໃຊ້ Foreground Service ເພື່ອປ້ອງກັນບໍ່ໃຫ້ Android ປິດ Bridge App ຂອງທ່ານເມື່ອຜູ້ໃຊ້ປິດໜ້າຈໍ.
+
+V. ຂັ້ນຕອນການພັດທະນາ (Development Flow)
+
+Setup: ສ້າງ Flutter Project, ຕັ້ງຄ່າ pubspec.yaml, ແລະ ຕິດຕັ້ງ Build Tools ທີ່ຈຳເປັນ (Android Studio, Xcode).
+
+Server Logic: ຂຽນ local_server.dart ແລະ ທົດສອບວ່າສາມາດຮັບ POST Request ຈາກ Web Browser ໄດ້.
+
+Hardware Logic: ຂຽນ bluetooth_printer.dart ເພື່ອເຊື່ອມຕໍ່ ແລະ ສົ່ງຄຳສັ່ງພິມຕົວຈິງ.
+
+Testing: Build App ໄປໃສ່ Android/iOS Device. ທົດສອບການສື່ສານລະຫວ່າງ Web App (Vue) ທີ່ແລ່ນຢູ່ໃນ Browser ຂອງ Device ນັ້ນໄປຫາ Flutter Bridge App ທີ່ Port 9100.
