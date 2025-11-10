@@ -48,7 +48,7 @@
 ### 2. Clone ໂປຼເຈັກ:
 ```bash
 git clone <your-repository-url>
-cd POS_BRIDGE_ROOTV2
+cd POS-BRIDGE-WINDOWS-SERVICE
 ```
 
 ### 3. ຕິດຕັ້ງ Dependencies:
