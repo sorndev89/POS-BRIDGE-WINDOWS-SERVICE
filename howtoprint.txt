@@ -1,72 +1,72 @@
-Server (Laravel): ສ້າງ PDF.
+### ວິທີການເອີ້ນໃຊ້ POS Bridge ຈາກ Client (Vue.js)
 
-Client (Vue/POS Bridge): ໄດ້ຮັບຄຳສັ່ງພ້ອມ URL/Data -> ພິມ.
+ເອກະສານນີ້ອະທິບາຍວິທີການທີ່ Client (ເຊັ່ນ Vue.js App) ຈະສື່ສານກັບ POS Bridge Service ເພື່ອພິມ PDF ແລະ ເປີດລິ້ນຊັກ.
 
-ສະຖານະປັດຈຸບັນ: Service Bridge ແລ່ນໄດ້ແລ້ວ (/list-printers ໃຊ້ໄດ້), ສະນັ້ນບັນຫາ Network Permission ທີ່ເຄີຍມີກໍ່ໄດ້ຖືກແກ້ໄຂແລ້ວ.
+**Workflow ຫຼັກ:** Client ຈະຕ້ອງສົ່ງຂໍ້ມູນ PDF ໃນຮູບແບບ **Base64 String** ໄປທີ່ Bridge.
 
-ຕໍ່ໄປນີ້ແມ່ນຂັ້ນຕອນທີ່ສົມບູນແບບສຳລັບ Vue.js ເພື່ອຈັດການການພິມ ໃບບິນ (Receipt) ແລະ ໃບສັ່ງອາຫານ (Kitchen Ticket) ທີ່ຖືກສ້າງຈາກ Server (Laravel).
+---
+#### 1. ຕົວຢ່າງ Vue.js Method
 
-💻 ຕົວຢ່າງ Vue.js: ການຈັດການການພິມຈາກ Server
-ໃນສະຖານະການນີ້, ຫຼັງຈາກການສັ່ງຊື້ສຳເລັດ, Laravel Server ຄວນສົ່ງ URL ຂອງໄຟລ໌ PDF ທີ່ຖືກສ້າງຂຶ້ນມາໃຫ້ Vue.
+ນີ້ແມ່ນຕົວຢ່າງຟັງຊັນໃນ Vue.js ສຳລັບການເອີ້ນໃຊ້ Bridge.
 
-1. ໂຄງສ້າງຂໍ້ມູນທີ່ຄວນໄດ້ຮັບຈາກ Server (Laravel)
-ສົມມຸດວ່າ API ຂອງ Laravel ສົ່ງຂໍ້ມູນນີ້ຄືນໃຫ້ Vue ຫຼັງການເຮັດທຸລະກຳສຳເລັດ:
-
-JSON
-
-{
-    "success": true,
-    "message": "Order placed successfully.",
-    "print_data": {
-        "receipt_url": "https://your-server.com/receipts/R-20251110-101.pdf",
-        "kitchen_url": "https://your-server.com/tickets/T-20251110-101-kitchen.pdf",
-        "printer_map": {
-            "receipt": "POS-RECEIPT-PRINTER", // ຊື່ເຄື່ອງພິມໃບບິນ
-            "kitchen": "POS-KITCHEN-PRINTER"  // ຊື່ເຄື່ອງພິມສັ່ງອາຫານ
-        }
-    }
-}
-2. ໂຄດ Vue Method (Client Side Logic)
-ເຮົາຈະສ້າງຟັງຊັນທີ່ຊັດເຈນເພື່ອຈັດການການພິມແບບ Sequential (ເທື່ອລະອັນ) ໂດຍໃຊ້ Endpoint /print/pdf-url ທີ່ເຮົາໄດ້ສ້າງໄວ້.
-
-JavaScript
-
+```javascript
 import axios from 'axios';
 
 export default {
     data() {
         return {
             bridgeUrl: 'http://localhost:9100',
+            printers: [],
+            // ຕົວຢ່າງ PDF Base64 (ໃນການໃຊ້ງານຈິງ, ຂໍ້ມູນນີ້ຄວນໄດ້ມາຈາກ API)
+            samplePdfBase64: 'JVBERi0xLjQKJ...', 
         };
     },
     methods: {
         /**
-         * ຟັງຊັນສຳລັບສັ່ງພິມ PDF ໂດຍໃຊ້ URL (ໂຄດຫຼັກ)
-         * @param {string} url - URL ເຕັມຂອງໄຟລ໌ PDF
-         * @param {string} printerName - ຊື່ Windows Driver
+         * ດຶງລາຍຊື່ເຄື່ອງພິມຈາກ Bridge
          */
-        async triggerPrintByUrl(url, printerName) {
-            console.log(`Sending to Bridge: URL=${url}, Printer=${printerName}`);
+        async fetchPrinters() {
+            try {
+                const response = await axios.get(`${this.bridgeUrl}/list-printers`);
+                this.printers = response.data;
+                console.log('Available printers:', this.printers);
+                alert('Printers loaded successfully!');
+            } catch (error) {
+                console.error('Error fetching printers:', error);
+                alert('Could not connect to POS Bridge. Please ensure it is running.');
+            }
+        },
+
+        /**
+         * ຟັງຊັນສຳລັບສັ່ງພິມ PDF ໂດຍໃຊ້ Base64 String (ໂຄດຫຼັກ)
+         * @param {string} base64String - ຂໍ້ມູນ PDF ที่ถูกเข้ารหัสเป็น Base64
+         * @param {string} printerName - ຊື່ເຄື່ອງພິມທີ່ໄດ້ຈາກ /list-printers
+         */
+        async triggerPrintByBase64(base64String, printerName) {
+            if (!printerName) {
+                alert('Please select a printer first.');
+                return false;
+            }
+            console.log(`Sending print job to: ${printerName}`);
             
             try {
                 const payload = {
-                    pdfUrl: url,
+                    pdfBase64: base64String,
                     printerName: printerName
                 };
 
-                const response = await axios.post(`${this.bridgeUrl}/print/pdf-url`, payload);
+                const response = await axios.post(`${this.bridgeUrl}/print/pdf`, payload);
                 
                 if (response.data.success) {
-                    console.log(`[SUCCESS] Printed to ${printerName}.`);
+                    console.log(`[SUCCESS] Print job sent to ${printerName}.`);
+                    alert(`Print job sent to ${printerName} successfully.`);
                     return true;
                 } else {
-                    // ຖ້າ Bridge ຕອບວ່າ: ພິມຜິດພາດ (ເຊັ່ນ: ເຄື່ອງພິມປິດ)
-                    console.error(`[BRIDGE ERROR] Printing failed on ${printerName}:`, response.data.message);
-                    alert(`Error ພິມ ${printerName}: ${response.data.message}`);
+                    console.error(`[BRIDGE ERROR] Printing failed:`, response.data.message);
+                    alert(`Printing Error: ${response.data.message}`);
                     return false;
                 }
             } catch (error) {
-                // ຖ້າບໍ່ສາມາດເຊື່ອມຕໍ່ກັບ Bridge ໄດ້
                 console.error('Network Error: Bridge is unreachable.', error);
                 alert('CRITICAL ERROR: ບໍ່ສາມາດເຊື່ອມຕໍ່ກັບ POS Bridge ໄດ້.');
                 return false;
@@ -74,42 +74,56 @@ export default {
         },
 
         /**
-         * ຟັງຊັນຈັດການການພິມທັງໝົດຫຼັງການສັ່ງຊື້
-         * @param {object} printData - ຂໍ້ມູນທີ່ໄດ້ຮັບຈາກ Server (ເບິ່ງໂຄງສ້າງຂ້າງເທິງ)
+         * ຟັງຊັນສັ່ງເປີດລິ້ນຊັກ
          */
-        async handleOrderCompletePrint(printData) {
-            alert('ກຳລັງດຳເນີນການພິມ: ໃບບິນ ແລະ ໃບສັ່ງອາຫານ...');
-
-            const { receipt_url, kitchen_url, printer_map } = printData;
-
-            // --- 1. ພິມໃບບິນ (Receipt) ---
-            const receiptSuccess = await this.triggerPrintByUrl(
-                receipt_url, 
-                printer_map.receipt
-            );
-
-            // ຖ້າໃບບິນພິມສຳເລັດ, ໃຫ້ໄປພິມໃບສັ່ງອາຫານຕໍ່
-            if (receiptSuccess) {
-                // --- 2. ພິມໃບສັ່ງອາຫານ (Kitchen Ticket) ---
-                await this.triggerPrintByUrl(
-                    kitchen_url, 
-                    printer_map.kitchen
-                );
+        async openCashDrawer() {
+            console.log('Sending open drawer command...');
+            try {
+                await axios.post(`${this.bridgeUrl}/hardware/open-drawer`);
+                alert('Cash drawer command sent.');
+            } catch (error) {
+                console.error('Error opening cash drawer:', error);
+                alert('Failed to send open drawer command.');
             }
-            
-            alert('ຂະບວນການພິມສຳເລັດແລ້ວ.');
-        }
+        },
 
-        // ... (other methods)
+        // ຕົວຢ່າງການເອີ້ນໃຊ້
+        handlePrintReceipt() {
+            // ສົມມຸດວ່າເລືອກເຄື່ອງພິມທຳອິດໃນລາຍການ
+            const targetPrinter = this.printers.length > 0 ? this.printers[0].name : null; 
+            this.triggerPrintByBase64(this.samplePdfBase64, targetPrinter);
+        }
+    },
+    mounted() {
+        // ດຶງລາຍຊື່ເຄື່ອງພິມເມື່ອ Component ໂຫຼດຂຶ້ນມາ
+        this.fetchPrinters();
     }
 }
-3. ຂັ້ນຕອນການເຮັດວຽກທີ່ແນະນໍາ
-Server (Laravel) Action: ຫຼັງຈາກສ້າງ Order ສຳເລັດ, ໂຄດ Laravel ຄວນສ້າງໄຟລ໌ PDF ທັງສອງ (receipt.pdf, kitchen.pdf) ແລະ ເກັບໄວ້ໃນ Server.
+```
 
-Server Response: Laravel ສົ່ງ Response ທີ່ມີ print_data (ລວມທັງ URL ຂອງໄຟລ໌) ກັບຄືນໄປຫາ Vue.
+---
+#### 2. ຂັ້ນຕອນການເຮັດວຽກທີ່ແນະນຳ (Recommended Workflow)
 
-Vue Action: ຟັງຊັນ handleOrderCompletePrint() ຖືກເອີ້ນໃຊ້.
+1.  **Client (Vue.js) ໂຫຼດໜ້າ:** ເມື່ອໜ້າ POS ໂຫຼດ, ໃຫ້ຍິງ API ໄປທີ່ `/list-printers` ເພື່ອເອົາລາຍຊື່ເຄື່ອງພິມມາເກັບໄວ້ ແລະ ສະແດງໃຫ້ຜູ້ໃຊ້ເລືອກ.
 
-Bridge Download & Print: Bridge App ທີ່ Port 9100 ຮັບ URL -> ດາວໂຫຼດໄຟລ໌ (ໃຊ້ axios ໃນ Bridge) -> ສົ່ງໄປພິມໂດຍໃຊ້ Driver ຂອງ Windows.
+2.  **Server (Laravel) ສ້າງ PDF:** ເມື່ອມີການສັ່ງຊື້, ໂຄດຝັ່ງ Server (Laravel) ຄວນ:
+    *   ສ້າງໄຟລ໌ PDF ຂອງໃບບິນ (Receipt) ຫຼື ໃບສັ່ງຄົວ (Kitchen Ticket).
+    *   **ແປງເນື້ອໃນຂອງ PDF ນັ້ນເປັນ Base64 String** ແລ້ວສົ່ງຄ່າ Base64 ນັ້ນກັບມາໃຫ້ Vue.js ພ້ອມກັບຂໍ້ມູນອື່ນໆໃນ API response.
+    
+    **ຕົວຢ່າງ API Response ຈາກ Laravel:**
+    ```json
+    {
+        "success": true,
+        "order_id": 123,
+        "receipt_base64": "JVBERi0xLjQKJ...", // PDF content as Base64
+        "kitchen_ticket_base64": "JVBERi0xLjQKJ..." 
+    }
+    ```
 
-ດ້ວຍວິທີນີ້, ທ່ານສາມາດປັບປ່ຽນ Logic ຂອງການພິມໃນ Laravel ໄດ້ງ່າຍ, ແລະ Client (Vue) ຈະມີໜ້າທີ່ພຽງແຕ່ເປັນຜູ້ສັ່ງການ (Commander) ໃຫ້ Bridge ເຮັດວຽກເທົ່ານັ້ນ.ເຳ
+3.  **Client (Vue.js) ສັ່ງພິມ:**
+    *   Vue.js ໄດ້ຮັບ Base64 string ຈາກ Laravel.
+    *   ເອີ້ນໃຊ້ຟັງຊັນ `triggerPrintByBase64()` ໂດຍສົ່ງ `receipt_base64` ແລະ ຊື່ເຄື່ອງພິມທີ່ຜູ້ໃຊ້ເລືອກ ໄປໃຫ້ Bridge.
+    *   Bridge Service ຈະຮັບຂໍ້ມູນ Base64, ຖອດລະຫັດ, ບັນທຶກເປັນໄຟລ໌ຊົ່ວຄາວ, ແລະ ສັ່ງພິມຜ່ານ `node-printer`.
+
+ດ້ວຍວິທີນີ້, Client ຈະມີໜ້າທີ່ຮັບ-ສົ່ງຂໍ້ມູນເທົ່ານັ້ນ, ເຮັດໃຫ້ Logic ບໍ່ຊັບຊ້ອນ.
+ເຳ

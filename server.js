@@ -2,29 +2,100 @@ const express = require('express');
 const cors = require('cors');
 const bodyParser = require('body-parser');
 const escpos = require('escpos');
-const USB = require('escpos-usb'); 
-const fs = require('fs'); // ໃຊ້ສຳລັບການບັນທຶກ/ລຶບໄຟລ໌ຊົ່ວຄາວ
+const USB = require('escpos-usb');
+const fs = require('fs');
 const path = require('path');
-const { print, getPrinters } = require('pdf-to-printer'); // Library ພິມ PDF ໃໝ່
+const os = require('os');
+const { exec } = require('child_process');
 
 const app = express();
-app.use(cors());
+app.use(cors({
+    origin: ['http://127.0.0.1:8000', 'http://localhost:8000'], // Allow specific origins
+    credentials: true // Allow cookies/authorization headers to be sent
+}));
 app.use(bodyParser.json({ limit: '10mb' }));
 app.use(bodyParser.urlencoded({ limit: '10mb', extended: true }));
 
 const PORT = 9100;
 const SERVICE_NAME = 'service print pos app';
+const IS_WINDOWS = os.platform() === 'win32';
+
+// --- Wrapper Functions for Cross-Platform Printing ---
+
+function getPrintersWrapper() {
+  return new Promise((resolve, reject) => {
+    if (IS_WINDOWS) {
+      // For Windows, use PowerShell to get printer names
+      const command = 'powershell -command "Get-Printer | Select-Object Name | Format-List"';
+      exec(command, (error, stdout, stderr) => {
+        if (error) {
+          return reject(error);
+        }
+        if (stderr) {
+          // PowerShell might write warnings to stderr, ignore for now unless it's a real issue
+          console.warn('Powershell stderr:', stderr);
+        }
+        const printers = stdout.split('\n')
+          .filter(line => line.includes('Name'))
+          .map(line => line.split(':')[1].trim())
+          .filter(name => name.length > 0);
+        resolve(printers);
+      });
+    } else {
+      // For macOS/Linux, use lpstat
+      const command = 'lpstat -a';
+      exec(command, (error, stdout, stderr) => {
+        if (error) {
+          return reject(error);
+        }
+        const printers = stdout.split('\n')
+          .filter(line => line.length > 0)
+          .map(line => line.split(' ')[0]);
+        resolve(printers);
+      });
+    }
+  });
+}
+
+function printFileWrapper(filePath, printerName) {
+  return new Promise((resolve, reject) => {
+    // Sanitize inputs to prevent command injection
+    const safeFilePath = `"${filePath}"`;
+    const safePrinterName = `"${printerName}"`;
+
+    let command;
+    if (IS_WINDOWS) {
+      // Use PowerShell's PrintTo verb. Important to use single quotes around paths for PS.
+      const psFilePath = filePath.replace(/'/g, "''");
+      const psPrinterName = printerName.replace(/'/g, "''");
+      command = `powershell -command "Start-Process -FilePath '${psFilePath}' -Verb PrintTo -ArgumentList '${psPrinterName}' -PassThru | Wait-Process"`;
+    } else {
+      // Use lp for macOS/Linux
+      command = `lp -d ${safePrinterName} ${safeFilePath}`;
+    }
+
+    exec(command, (error, stdout, stderr) => {
+      if (error) {
+        console.error(`Exec error for command "${command}":`, error);
+        return reject(error);
+      }
+      if (stderr) {
+        console.warn(`Stderr for command "${command}":`, stderr);
+      }
+      resolve(stdout);
+    });
+  });
+}
 
 // === Endpoint 1: ດຶງລາຍຊື່ Printer ທັງໝົດ ===
 app.get('/list-printers', async (req, res) => {
-    console.log('Received /list-printers request.');
+    console.log(`Received /list-printers request on ${os.platform()}.`);
     try {
-        // ໃຊ້ getPrinters ຂອງ pdf-to-printer ເຊິ່ງເປັນ Pure JS
-        const printerList = await getPrinters();
+        const printerList = await getPrintersWrapper();
         res.json(printerList);
     } catch (e) {
-        console.error('Error listing printers:', e.message);
-        res.status(500).json({ success: false, message: 'Cannot list printers (pdf-to-printer error).', error: e.message });
+        console.error('Error listing printers:', e);
+        res.status(500).json({ success: false, message: 'Cannot list printers.', error: e.message });
     }
 });
 
@@ -37,8 +108,7 @@ app.post('/hardware/open-drawer', (req, res) => {
         
         device.open((error) => {
             if (error) {
-                // ຂໍ້ຜິດພາດ USB/Permission
-                return res.status(500).json({ success: false, message: 'USB Error: Cannot open device ( VID/PID error or no permissions)' });
+                return res.status(500).json({ success: false, message: 'USB Error: Cannot open device (VID/PID error or permissions)', error: error.message });
             }
             escposPrinter.cashdraw();
             escposPrinter.close(() => {
@@ -59,34 +129,28 @@ app.post('/print/pdf', async (req, res) => {
         return res.status(400).json({ success: false, message: 'Missing PDF data or printer name.' });
     }
 
-    // 1. ປ່ຽນ Base64 ໃຫ້ເປັນ Buffer ແລ້ວບັນທຶກເປັນໄຟລ໌ PDF ຊົ່ວຄາວ
     const pdfBuffer = Buffer.from(pdfBase64, 'base64');
     const tempFilePath = path.join(__dirname, `temp_${Date.now()}.pdf`);
 
     try {
         fs.writeFileSync(tempFilePath, pdfBuffer);
 
-        // 2. ສົ່ງໄປພິມຜ່ານ Windows Driver
-        await print(tempFilePath, {
-            printer: printerName,
-            // ທ່ານສາມາດເພີ່ມ copies, orientation, etc. ທີ່ນີ້
-        });
+        console.log(`Printing on ${os.platform()} to printer: ${printerName}`);
+        await printFileWrapper(tempFilePath, printerName);
 
-        res.json({ success: true, message: 'PDF sent to printer driver successfully.' });
+        res.json({ success: true, message: 'PDF sent to printer successfully.' });
 
     } catch (e) {
-        console.error('PDF Print Error:', e.message);
-        res.status(500).json({ success: false, message: 'PDF printing failed: ' + e.message });
+        console.error('PDF Print Error:', e);
+        res.status(500).json({ success: false, message: 'PDF printing failed.', error: e.toString() });
     } finally {
-        // 3. ລຶບໄຟລ໌ຊົ່ວຄາວຖິ້ມ
         if (fs.existsSync(tempFilePath)) {
             fs.unlinkSync(tempFilePath);
         }
     }
 });
 
-
-// ເລີ່ມ Server ຫຼັກ (ຈະຖືກເປີດໂດຍ NSSM Service)
+// ເລີ່ມ Server ຫຼັກ
 app.listen(PORT, () => {
-    console.log(`[${SERVICE_NAME}] is running! Listening on http://localhost:${PORT}`);
+    console.log(`[${SERVICE_NAME}] is running on ${os.platform()}! Listening on http://localhost:${PORT}`);
 });

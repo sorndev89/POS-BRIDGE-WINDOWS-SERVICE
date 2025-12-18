@@ -1,0 +1,70 @@
+================================================================
+### ເອກະສານ: ຂັ້ນຕອນການສ້າງໄຟລ໌ຕິດຕັ້ງ POS Bridge ສຳລັບ Windows ###
+================================================================
+
+ເອກະສານນີ້ອະທິບາຍລາຍລະອຽດສະເພາະການສ້າງໄຟລ໌ `setup.exe` ເພື່ອຕິດຕັ້ງ POS Bridge Service ໃນລະບົບປະຕິບັດການ Windows.
+
+---
+
+#### **ສ່ວນທີ 1: ໄຟລ໌ທີ່ຕ້ອງກະກຽມ**
+
+ເພື່ອເລີ່ມຕົ້ນຂະບວນການ, ໃຫ້ແນ່ໃຈວ່າທ່ານມີໄຟລ໌ທັງໝົດນີ້ຢູ່ໃນ Folder ດຽວກັນ (ຕົວຢ່າງ: `C:\POS_BRIDGE_BUILD`):
+
+1.  **`server.js`**
+    *   ລາຍລະອຽດ: ໂຄດຫຼັກຂອງ Express.js server ທີ່ໄດ້ຮັບການແກ້ໄຂໃຫ້ໃຊ້ `node-printer` ແລ້ວ.
+
+2.  **`package.json`**
+    *   ລາຍລະອຽດ: ໄຟລ໌ກຳນົດ Dependencies ຂອງໂປຣເຈັກ (ເຊັ່ນ: `express`, `node-printer`, `escpos-usb`).
+
+3.  **`nssm.exe`**
+    *   ລາຍລະອຽດ: ເຄື່ອງມື (Non-Sucking Service Manager) ສຳລັບສ້າງ ແລະ ຈັດການ Windows Service.
+
+4.  **`create_installer.nsi`**
+    *   ລາຍລະອຽດ: Script ສຳລັບ NSIS ເພື່ອສ້າງໄຟລ໌ `setup.exe` ທີ່ສົມບູນແບບ.
+
+---
+
+#### **ສ່ວນທີ 2: ເຄື່ອງມືທີ່ຕ້ອງຕິດຕັ້ງໃນ Windows**
+
+ກ່ອນຈະ Build, ຕ້ອງຕິດຕັ້ງໂປຣແກຣມພື້ນຖານເຫຼົ່ານີ້ໃນເຄື່ອງ Windows ຂອງທ່ານ:
+
+1.  **Node.js**
+    *   ດາວໂຫຼດ ແລະ ຕິດຕັ້ງເວີຊັນຫຼ້າສຸດຈາກ [nodejs.org](https://nodejs.org/).
+
+2.  **Visual Studio Build Tools**
+    *   **ສຳຄັນທີ່ສຸດ:** `node-printer` ເປັນ Native Module, ສະນັ້ນມັນຈຳເປັນຕ້ອງມີ C++ compiler. ໃຫ້ຕິດຕັ້ງ "Desktop development with C++" ຜ່ານ Visual Studio Installer.
+    *   ຫຼື ລອງໃຊ້ຄຳສັ່ງ: `npm install --global windows-build-tools` ໃນ CMD (Run as Administrator).
+
+3.  **NSIS (Nullsoft Scriptable Install System)**
+    *   ດາວໂຫຼດ ແລະ ຕິດຕັ້ງຈາກ [nsis.sourceforge.io](https://nsis.sourceforge.io/Download).
+
+---
+
+#### **ສ່ວນທີ 3: ຂັ້ນຕອນການສ້າງໄຟລ໌ Setup.exe**
+
+**ຂັ້ນຕອນ A: ຕິດຕັ້ງ Dependencies ຂອງໂປຣເຈັກ**
+1.  ເປີດ **Command Prompt (CMD)** ຫຼື **PowerShell** ຂຶ້ນມາໃນຮູບແບບ **Administrator**.
+2.  ໃຊ້ຄຳສັ່ງ `cd` ເພື່ອໄປທີ່ Folder ທີ່ທ່ານໄດ້ກະກຽມໄຟລ໌ໄວ້.
+    ```cmd
+    cd C:\POS_BRIDGE_BUILD
+    ```
+3.  ຕິດຕັ້ງ Dependencies ທັງໝົດ. ຂັ້ນຕອນນີ້ຈະໃຊ້ເວລາດົນ ເພາະມັນຈະ Compile `node-printer`:
+    ```cmd
+    npm install
+    ```
+
+**ຂັ້ນຕອນ B: ສ້າງໄຟລ໌ `PosBridge.exe`**
+1.  ຫຼັງຈາກ `npm install` ສຳເລັດ, ໃຫ້ໃຊ້ຄຳສັ່ງ build ທີ່ມີໃນ `package.json`:
+    ```cmd
+    npm run build
+    ```
+2.  ຄຳສັ່ງນີ້ຈະໃຊ້ `pkg` ເພື່ອລວບລວມ Node.js app ຂອງທ່ານໃຫ້ເປັນໄຟລ໌ Executable ດຽວຊື່ວ່າ **`PosBridge.exe`**.
+
+**ຂັ້ນຕອນ C: ສ້າງໄຟລ໌ `Setup.exe`**
+1.  ກວດສອບໃຫ້ແນ່ໃຈວ່າໄຟລ໌ `PosBridge.exe` (ທີ່ໄດ້ຈາກຂັ້ນຕອນ B) ແລະ `nssm.exe` ຢູ່ບ່ອນດຽວກັນກັບ `create_installer.nsi`.
+2.  ໄປທີ່ Folder ນັ້ນ, ຄລິກຂວາໃສ່ໄຟລ໌ **`create_installer.nsi`**.
+3.  ເລືອກເມนู **"Compile NSIS Script"**.
+4.  ຖ້າບໍ່ມີຫຍັງຜິດພາດ, ທ່ານຈະໄດ້ໄຟລ໌ຕິດຕັ້ງຊື່ **`POS_Bridge_Setup_vX.X.X.exe`** ອອກມາ. ໄຟລ໌ນີ້ແມ່ນໄຟລ໌ສຳເລັດຮູບທີ່ສາມາດນຳໄປຕິດຕັ້ງໃນເຄື່ອງຂອງລູກຄ້າໄດ້.
+
+---
+**ຈົບຂະບວນການ.**

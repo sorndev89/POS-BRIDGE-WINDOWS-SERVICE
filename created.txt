@@ -1,80 +1,78 @@
-Windows
-
 ============================================================
-ເອກະສານສຸດທ້າຍ: POS BRIDGE WINDOWS SERVICE (V1.0.4)
-ວິທີການ: PKG + NSSM + NSIS (Native Windows Build)
+ເອກະສານສຸດທ້າຍ: POS BRIDGE - CROSS PLATFORM (V1.1.0)
+ວິທີການ: Node.js + node-printer + pkg (Windows) + pm2 (macOS)
 ============================================================
 
 I. ບັນຫາທີ່ໄດ້ຮັບການແກ້ໄຂ
 
-* ບັນຫາ 1 (Cross-Compile): ແກ້ໄຂໂດຍການຍ້າຍຂັ້ນຕອນການ Build (PKG) ມາເຮັດໃນ Windows ເອງ.
-* ບັນຫາ 2 (Native Module Crash): ແກ້ໄຂໂດຍການຖອດ `node-printer` ອອກ ແລະ ປ່ຽນໄປໃຊ້ `pdf-to-printer` (Library ທີ່ບໍ່ສ້າງບັນຫາ Native Module) ແລະ ໃຊ້ NSSM ສ້າງ Service ທີ່ໜ້າເຊື່ອຖື.
-* ບັນຫາ 3 (NSIS/Files Missing): ແກ້ໄຂໂດຍການຈັດວາງໄຟລ໌ `PosBridge.exe` ແລະ `nssm.exe` ໃຫ້ຖືກຕ້ອງ.
+* ບັນຫາ 1 (Original Issue): ຕ້ອງການ Bridge Service ທີ່ໝັ້ນຄົງໃນ Windows.
+* ບັນຫາ 2 (Cross-Platform): ແກ້ໄຂໂດຍການຖອດ `pdf-to-printer` (ທີ່ໃຊ້ໄດ້ສະເພາະ Windows) ອອກ ແລະ ປ່ຽນໄປໃຊ້ `node-printer` ເພື່ອໃຫ້ສາມາດຮອງຮັບທັງ Windows ແລະ macOS.
 
 ---
+II. ຂັ້ນຕອນການຕິດຕັ້ງ ແລະ ນຳໃຊ້ (macOS)
+------------------------------------------------------------
 
-II. ໂຄງສ້າງ Folder ທີ່ສຳເລັດ (Windows Build Machine)
+ສຳລັບ macOS, ເຮົາຈະບໍ່ສ້າງ Installer, ແຕ່ຈະ Run Service ໂດຍກົງຜ່ານ Node.js ແລະ PM2.
 
-ໄຟລ໌ທັງໝົດທີ່ສຳຄັນຕ້ອງຢູ່ຮ່ວມກັນໃນ Folder ຫຼັກ:
+1.  **ຕິດຕັ້ງເຄື່ອງມືພື້ນຖານ (ຖ້າຍັງບໍ່ມີ):**
+    $ brew install node libusb
 
-C:\POS_BRIDGE_ROOT\
-├── server.js               (ໂຄດ Express Server + PDF Logic)
-├── package.json            (ລວມ Library ໃໝ່ ແລະ Script Build)
-├── create_installer.nsi    (Script NSIS ທີ່ຖືກ Compile ສໍາເລັດ)
-├── nssm.exe                (NSSM Tool 64-bit ທີ່ຖືກນໍາໃຊ້)
-├── PosBridge.exe           (Executable ທີ່ສ້າງໂດຍ PKG)
-└── POS_Bridge_Setup_v1.0.4.exe  (ຜົນລັບສຸດທ້າຍ, ໂຕຕິດຕັ້ງ)
+2.  **ຕິດຕັ້ງ Dependencies ຂອງໂປຣເຈັກ:**
+    $ cd POS_BRIDGE_ROOTV2
+    $ npm install
+
+3.  **ຕິດຕັ້ງ ແລະ ເລີ່ມ Service ດ້ວຍ PM2:**
+    $ npm install pm2 -g
+    $ pm2 start server.js --name pos-bridge-service
+    $ pm2 startup 
+    (Copy & Paste ຄຳສັ່ງທີ່ PM2 ສະແດງຂຶ້ນມາ)
+    $ pm2 save
+
+4.  **ກວດສອບ API:**
+    ເປີດ Browser -> http://localhost:9100/list-printers
 
 ---
+III. ຂັ້ນຕອນການສ້າງ Installer (Windows Build Steps)
+------------------------------------------------------------
 
-III. ຂັ້ນຕອນການສ້າງ (Windows Build Steps)
-
-(ສົມມຸດວ່າທ່ານໄດ້ຕິດຕັ້ງ Node.js, Visual Studio Build Tools, NSSM, ແລະ NSIS ໄວ້ແລ້ວ)
+(ສົມມຸດວ່າທ່ານໄດ້ຕິດຕັ້ງ Node.js, **Visual Studio Build Tools (ສຳຄັນຫຼາຍ, ເພາະ node-printer ຕ້ອງ compile native modules)**, NSSM, ແລະ NSIS ໄວ້ແລ້ວ)
 
 A. ກຽມ Source Code
-    1.  Copy ໄຟລ໌ `server.js`, `package.json`, `create_installer.nsi`, ແລະ `nssm.exe` ໃສ່ໃນ Folder ຫຼັກ.
+    1.  Copy ໄຟລ໌ `server.js`, `package.json`, `create_installer.nsi`, ແລະ `nssm.exe` ໃສ່ໃນ Folder ຫຼັກ (ເຊັ່ນ: C:\POS_BRIDGE_ROOT\).
 
 B. ຕິດຕັ້ງ Dependencies
     1.  ເປີດ **Command Prompt (CMD)** ແບບ **Administrator**.
     2.  ໄປທີ່ Folder ໂຄງການ:
         $ cd C:\POS_BRIDGE_ROOT
-    3.  ຕິດຕັ້ງ Libraries (ນີ້ຈະ Compile Native Modules ຢ່າງຖືກຕ້ອງ):
+    3.  ຕິດຕັ້ງ Libraries (ຄຳສັ່ງນີ້ຈະ Compile Native Modules ຂອງ node-printer):
         $ npm install
-    4.  ຕິດຕັ້ງ PKG (ຖ້າຈຳເປັນ):
-        $ npm install -g pkg 
 
-C. ສ້າງ Executable (PosBridge.exe)
-    1.  ແລ່ນຄຳສັ່ງ Build:
-        $ pkg server.js --targets node18-win-x64 --output PosBridge.exe
+C. ສ້າງ Executable (PosBridge.exe) ດ້ວຍ PKG
+    1.  ແລ່ນຄຳສັ່ງ Build ຈາກ `package.json`:
+        $ npm run build
         (ໄຟລ໌ 'PosBridge.exe' ຈະຖືກສ້າງຂຶ້ນ)
 
-D. Compile Final Installer
-    1.  ໃຫ້ແນ່ໃຈວ່າ 'PosBridge.exe' ແລະ 'nssm.exe' ຢູ່ໃນ Folder ດຽວກັນກັບ '.nsi' ໄຟລ໌.
+D. Compile Final Installer ດ້ວຍ NSIS
+    1.  ໃຫ້ແນ່ໃຈວ່າ 'PosBridge.exe' ແລະ 'nssm.exe' ຢູ່ໃນ Folder ດຽວກັນກັບ `create_installer.nsi`.
     2.  ຄລິກຂວາໃສ່ **create_installer.nsi** ແລ້ວເລືອກ **"Compile NSIS Script"**.
-    3.  ຜົນລັບ: ໄຟລ໌ **POS_Bridge_Setup_v1.0.4.exe** ຈະຖືກສ້າງຂຶ້ນ.
+    3.  ຜົນລັບ: ໄຟລ໌ **POS_Bridge_Setup_vX.X.X.exe** ຈະຖືກສ້າງຂຶ້ນ.
 
 ---
 
-IV. ການນຳໃຊ້ຕົວຈິງ ແລະ ການກວດສອບ (Deployment)
+IV. ການນຳໃຊ້ຕົວຈິງໃນ Windows (Deployment)
 
 A. ການຕິດຕັ້ງ (Install)
-    1.  Copy ໄຟລ໌ **POS_Bridge_Setup_v1.0.4.exe** ໄປເຄື່ອງລູກຄ້າ.
+    1.  Copy ໄຟລ໌ Setup ໄປເຄື່ອງລູກຄ້າ.
     2.  ຄລິກຂວາ ແລ້ວເລືອກ **"Run as administrator"**.
 
-B. ການກວດສອບ Service ຖາວອນ
+B. ການກວດສອບ Service
     1.  ເປີດ **Services Manager** (services.msc).
-    2.  ກວດສອບວ່າ "service print pos app" ມີສະຖານະ **Running** ແລະ ປະເພດເລີ່ມຕົ້ນ **Automatic**.
+    2.  ກວດສອບວ່າ "service print pos app" ມີສະຖານະ **Running**.
 
 C. ກວດສອບ API
     1.  ເປີດ Web Browser ໃໝ່:
-        -> http://localhost:9100/list-printers (ຕ້ອງເຫັນລາຍຊື່ Printer ຈາກ `pdf-to-printer`)
+        -> http://localhost:9100/list-printers (ຕ້ອງເຫັນລາຍຊື່ Printer ຈາກ `node-printer`)
 
 D. ຮັບປະກັນຄວາມໝັ້ນຄົງ
     1.  **Restart** ເຄື່ອງ Windows.
-    2.  ກວດສອບອີກຄັ້ງ: Service ຕ້ອງແລ່ນໂດຍອັດຕະໂນມັດ ຫຼັງຈາກ Windows ເປີດຂຶ້ນມາ.
-
-============================================================
-
-in macos
-- sudo npm install -g pkg
-- sudo pkg server.js --targets node18-win-x64 --output PosBridge.exe
+    2.  ກວດສອບອີກຄັ້ງ: Service ຕ້ອງແລ່ນโดยອັດຕະໂນມັດ.
