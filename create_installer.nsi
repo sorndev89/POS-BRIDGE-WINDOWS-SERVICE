@@ -2,11 +2,13 @@
 !define APPNAME "service print pos app"
 !define COMPANYNAME "SornTech Innovation"
 !define APPVERSION "1.1.0" 
-!define SERVICEDESC "Smart Bridge App for Vue POS (Standalone Executable) Develop By SornTech Innovation  whatsapp: +85620 28729723."
+!define SERVICEDESC "Smart Bridge App for Vue POS. Developed by SornTech Innovation."
 !define APPDIR "POSBridgeApp"
 
-; ຊື່ໄຟລ໌ Installer ທີ່ຈະໄດ້
+; ຊື່ໄຟລ໌ Installer
 OutFile "POS_Bridge_Setup_v${APPVERSION}.exe"
+
+; ໃຊ້ $PROGRAMFILES64 ຖ້າເປັນ 64bit, ຖ້າບໍ່ມີຈະໄປ $PROGRAMFILES (32bit) ເອງ
 InstallDir "$PROGRAMFILES64\${APPDIR}"
 RequestExecutionLevel admin
 
@@ -16,72 +18,74 @@ Page instfiles
 UninstPage uninstConfirm
 UninstPage instfiles
 
-; === 3. ພາກສ່ວນການຕິດຕັ້ງ (Install Section) ===
+; === 3. ພາກສ່ວນການຕິດຕັ້ງ ===
 Section "Install Core Files"
 
-  SetDetailsPrint textonly
-  DetailPrint "Installing ${APPNAME}..."
+  ; --- 0. ກວດສອບ ແລະ ຢຸດ Service ເກົ່າກ່ອນ (ຖ້າມີ) ---
+  DetailPrint "Checking for existing service..."
+  nsExec::Exec '"$INSTDIR\nssm.exe" stop "${APPNAME}"'
 
-  ; ຕັ້ງຄ່າບ່ອນສຳເນົາໄຟລ໌
   SetOutPath $INSTDIR
   
-  ; ສຳເນົາ PosBridge.exe ແລະ nssm.exe
+  ; --- 1. ສຳເນົາໄຟລ໌ ---
   DetailPrint "Copying files..."
   File "PosBridge.exe"
   File "nssm.exe"
+  File "SumatraPDF.exe"
 
-  ; === ສ່ວນທີ່ສຳຄັນທີ່ສຸດ: ໃຊ້ NSSM ສ້າງ Windows Service ===
-  DetailPrint "Creating Windows Service..."
+  ; --- 2. ຕັ້ງຄ່າ Windows Service ຜ່ານ NSSM ---
+  DetailPrint "Configuring Windows Service..."
   
-  ; 1. ຕັ້ງຄ່າ Service (ໂດຍ NSSM)
+  ; ຕິດຕັ້ງ ແລະ ຕັ້ງ Path ບ່ອນເຮັດວຽກ (AppDirectory ສຳຄັນຫຼາຍເພື່ອໃຫ້ຊອກ SumatraPDF ເຫັນ)
   ExecWait '"$INSTDIR\nssm.exe" install "${APPNAME}" "$INSTDIR\PosBridge.exe"'
-
-  ; 2. ຕັ້ງຄ່າ Startup/Working Directory (ສຳຄັນ)
   ExecWait '"$INSTDIR\nssm.exe" set "${APPNAME}" AppDirectory "$INSTDIR"'
-  
-  ; 3. ຕັ້ງຄ່າ Description ຂອງ Service
   ExecWait '"$INSTDIR\nssm.exe" set "${APPNAME}" Description "${SERVICEDESC}"'
-  
-  ; 4. ຕັ້ງຄ່າ Service ໃຫ້ເປັນ Automatic
   ExecWait '"$INSTDIR\nssm.exe" set "${APPNAME}" Start SERVICE_AUTO_START'
   
-  ; 5. ເລີ່ມ Service ທັນທີ
+  ; ຕັ້ງຄ່າໃຫ້ Service Restart ຕົວເອງອັດຕະໂນມັດຖ້າມັນ Crash
+  ExecWait '"$INSTDIR\nssm.exe" set "${APPNAME}" AppExit Default Restart'
+
+  ; --- 3. ເປີດ Firewall Port 9100 (Option) ---
+  DetailPrint "Opening Firewall Port 9100..."
+  nsExec::Exec 'netsh advfirewall firewall add rule name="${APPNAME}" dir=in action=allow protocol=TCP localport=9100'
+
+  ; --- 4. ເລີ່ມ Service ---
   DetailPrint "Starting Service..."
   ExecWait '"$INSTDIR\nssm.exe" start "${APPNAME}"'
 
-  ; === ສ້າງ Uninstaller ===
-  SetOutPath "$INSTDIR"
+  ; --- 5. ສ້າງ Uninstaller ---
   WriteUninstaller "$INSTDIR\uninstall.exe"
   WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\${APPNAME}" "DisplayName" "${APPNAME}"
   WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\${APPNAME}" "UninstallString" '"$INSTDIR\uninstall.exe"'
-  
-  DetailPrint "Installation completed."
+  WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\${APPNAME}" "DisplayVersion" "${APPVERSION}"
+  WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\${APPNAME}" "Publisher" "${COMPANYNAME}"
 
+  DetailPrint "Installation completed successfully."
 SectionEnd
 
-; === 4. ພາກສ່ວນຖອນການຕິດຕັ້ງ (Uninstall Section) ===
+; === 4. ພາກສ່ວນຖອນການຕິດຕັ້ງ ===
 Section "Uninstall"
 
-  DetailPrint "Stopping Service..."
-
-  ; 1. ຢຸດ Service
+  DetailPrint "Stopping and Removing Service..."
+  ; 1. ຢຸດ ແລະ ລຶບ Service
   ExecWait '"$INSTDIR\nssm.exe" stop "${APPNAME}"'
-  
-  ; 2. ລົບ Service ໂດຍ NSSM
   ExecWait '"$INSTDIR\nssm.exe" remove "${APPNAME}" confirm'
 
-  ; 3. ລົບ Registry
-  DeleteRegKey HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\${APPNAME}"
+  ; 2. ປິດ Firewall Rule
+  nsExec::Exec 'netsh advfirewall firewall delete rule name="${APPNAME}"'
 
-  ; 4. ລົບໄຟລ໌
+  ; 3. ລຶບໄຟລ໌
   DetailPrint "Deleting files..."
   Delete "$INSTDIR\PosBridge.exe"
   Delete "$INSTDIR\nssm.exe"
+  Delete "$INSTDIR\SumatraPDF.exe"
   Delete "$INSTDIR\uninstall.exe"
   
-  ; 5. ລົບ Folder ຫຼັກ
+  ; ລຶບ Folder ຫຼັກ (RMDir ຈະລຶບໄດ້ກໍຕໍ່ເມື່ອ Folder ວ່າງ)
   RMDir "$INSTDIR"
 
-  DetailPrint "Uninstallation completed."
+  ; ລຶບ Registry
+  DeleteRegKey HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\${APPNAME}"
 
+  DetailPrint "Uninstallation completed."
 SectionEnd
