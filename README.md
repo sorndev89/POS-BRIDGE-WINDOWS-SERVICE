@@ -123,8 +123,21 @@ node server.js
 
 Build executable:
 
+Service ນີ້ໃຊ້ `pkg` ເພື່ອ Build ໄຟລ໌ Executable (.exe) ສຳລັບ Windows
+
+ສຳລັບ Windows x64:
 ```bash
-npm run build
+pkg package.json --targets node18-win-x64 --output PosBridge_x64.exe
+```
+
+ສຳລັບ Windows ARM64:
+```bash
+pkg package.json --targets node18-win-arm64 --output PosBridge_arm64.exe
+```
+
+ສຳລັບ Windows x86 (32-bit):
+```bash
+pkg package.json --targets node18-win-x86 --output PosBridge_x86.exe
 ```
 
 ---
