@@ -8,6 +8,7 @@ const { exec } = require('child_process');
 const escpos = require('escpos');
 const USB = require('escpos-usb');
 
+
 const app = express();
 
 // --- ຕັ້ງຄ່າ Middleware ---
@@ -19,9 +20,36 @@ const PORT = 9100;
 const IS_WINDOWS = os.platform() === 'win32';
 
 // ຟັງຊັນຊອກຫາ Path ຂອງ Folder ທີ່ໄຟລ໌ .exe ຕັ້ງຢູ່
-function getExecutableDir() {
-    return path.dirname(process.execPath);
+function getAppRootPath() {
+    if (process.pkg) {
+        // Running as a packaged executable (e.g., PosBridge.exe)
+        return path.dirname(process.execPath);
+    } else {
+        // Running in development mode (e.g., node server.js)
+        // __dirname points to the directory of the current script file
+        return __dirname;
+    }
 }
+
+
+// NEW: Load configuration from config.json
+let config = {};
+const configFilePath = path.join(getAppRootPath(), 'config.json');
+
+try {
+    const configFileContent = fs.readFileSync(configFilePath, 'utf8');
+    config = JSON.parse(configFileContent);
+    console.log(`[POS Bridge] Loaded configuration from ${configFilePath}`);
+} catch (error) {
+    console.warn(`[POS Bridge] Could not read or parse config.json at ${configFilePath}. Using default/environment variables. Error: ${error.message}`);
+}
+
+// Configuration for Laravel API Polling
+// Precedence: config.json > environment variable > hardcoded default
+const LARAVEL_API_URL = config.LARAVEL_API_URL ;
+const POLLING_INTERVAL = parseInt(config.POLLING_INTERVAL_MS);
+let isProcessingJobs = false; // Flag to prevent concurrent job processing
+
 
 // === 1. ຟັງຊັນດຶງລາຍຊື່ Printer (ຮັກສາຄວາມສາມາດເດີມ + Universal) ===
 function getPrintersWrapper() {
@@ -50,7 +78,7 @@ function printFileWrapper(filePath, printerName) {
     return new Promise((resolve, reject) => {
         if (IS_WINDOWS) {
             // ຊອກຫາ SumatraPDF.exe ຢູ່ Folder ດຽວກັນກັບ PosBridge.exe
-            const sumatraPath = path.join(getExecutableDir(), 'SumatraPDF.exe');
+            const sumatraPath = path.join(getAppRootPath(), 'SumatraPDF.exe');
             
             if (!fs.existsSync(sumatraPath)) {
                 return reject(new Error(`ບໍ່ພົບ SumatraPDF.exe ຢູ່ທີ່: ${sumatraPath}`));
@@ -74,6 +102,101 @@ function printFileWrapper(filePath, printerName) {
 }
 
 // === API Endpoints ===
+
+
+
+// === Polling Function to Fetch and Process Print Jobs ===
+async function fetchAndProcessPrintJobs() {
+    if (isProcessingJobs) {
+        console.log('[Polling] Already processing jobs, skipping this interval.');
+        return;
+    }
+
+    isProcessingJobs = true;
+    console.log('[Polling] Checking for pending print jobs...');
+    try {
+        const response = await fetch(`${LARAVEL_API_URL}/print-jobs/pending`);
+        if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+        }
+        const pendingJobs = await response.json();
+        console.log('[Polling] Received pending jobs:', pendingJobs);
+
+        if (pendingJobs.length > 0) {
+            console.log(`[Polling] Found ${pendingJobs.length} pending print jobs.`);
+            for (const job of pendingJobs) {
+                const jobIdentifier = `Job ID: ${job.id}, Type: ${job.type}, Order ID: ${job.order_id || 'N/A'}`;
+                console.log(`[Polling] Processing ${jobIdentifier}`);
+
+                // 1. Write Base64 PDF to a temporary file
+                const tempPdfPath = path.join(os.tmpdir(), `print_job_${job.id}_${Date.now()}.pdf`);
+                try {
+                    fs.writeFileSync(tempPdfPath, Buffer.from(job.document_base64, 'base64'));
+                    console.log(`[Polling] Temp PDF written to: ${tempPdfPath}`);
+                } catch (writeError) {
+                    console.error(`[Polling] Error writing temp PDF for ${jobIdentifier}:`, writeError);
+                    await fetch(`${LARAVEL_API_URL}/print-jobs/${job.id}/status`, {
+                        method: 'PUT',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({
+                            status: 'failed',
+                            error_message: `Error writing PDF: ${writeError.message}`
+                        })
+                    });
+                    // Move to next job if writing fails
+                    continue; 
+                }
+
+                // 2. Send file to printer
+                let printSuccess = false;
+                let printErrorMessage = '';
+                try {
+                    await printFileWrapper(tempPdfPath, job.printer_name);
+                    printSuccess = true;
+                    console.log(`[Polling] Successfully sent ${jobIdentifier} to printer: ${job.printer_name}.`);
+                } catch (printError) {
+                    printErrorMessage = printError.message;
+                    console.error(`[Polling] Error printing ${jobIdentifier}:`, printError);
+                } finally {
+                    // 3. Delete temporary file
+                    try {
+                        if (fs.existsSync(tempPdfPath)) {
+                            fs.unlinkSync(tempPdfPath);
+                            console.log(`[Polling] Deleted temp PDF: ${tempPdfPath}`);
+                        }
+                    } catch (unlinkError) {
+                        console.error(`[Polling] Error deleting temp PDF for ${jobIdentifier}:`, unlinkError);
+                    }
+                }
+
+                // 4. Update job status on backend
+                try {
+                    await fetch(`${LARAVEL_API_URL}/print-jobs/${job.id}/status`, {
+                        method: 'PUT',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({
+                            status: printSuccess ? 'completed' : 'failed',
+                            error_message: printSuccess ? null : printErrorMessage
+                        })
+                    });
+                    console.log(`[Polling] Updated status for ${jobIdentifier} to: ${printSuccess ? 'completed' : 'failed'}.`);
+                } catch (updateError) {
+                    console.error(`[Polling] Error updating status for ${jobIdentifier} on backend:`, updateError);
+                }
+            }
+        } else {
+            console.log('[Polling] No pending print jobs found.');
+        }
+    } catch (error) {
+        console.error('[Polling] Error fetching print jobs from Laravel Backend:', error.message);
+    } finally {
+        isProcessingJobs = false;
+    }
+}
 
 // ດຶງລາຍຊື່ Printer
 app.get('/list-printers', async (req, res) => {
@@ -133,4 +256,11 @@ app.post('/print/pdf', async (req, res) => {
 app.listen(PORT, () => {
     console.log(`[POS Bridge] Running on ${os.platform()} (${os.arch()})`);
     console.log(`Listening on http://localhost:${PORT}`);
+     console.log(`[POS Bridge] Polling Laravel API at: ${LARAVEL_API_URL}`);
+    console.log(`[POS Bridge] Polling interval: ${POLLING_INTERVAL / 1000} seconds.`);
+
+    // Start polling immediately and then at intervals
+    fetchAndProcessPrintJobs(); 
+    setInterval(fetchAndProcessPrintJobs, POLLING_INTERVAL);
+
 });

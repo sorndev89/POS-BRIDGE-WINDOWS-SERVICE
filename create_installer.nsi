@@ -1,7 +1,7 @@
 ; === 1. ຕັ້ງຄ່າພື້ນຖານ ===
 !define APPNAME "service print pos app"
 !define COMPANYNAME "SornTech Innovation"
-!define APPVERSION "1.1.0" 
+!define APPVERSION "1.1.2" 
 !define SERVICEDESC "Smart Bridge App for Vue POS. Developed by SornTech Innovation."
 !define APPDIR "POSBridgeApp"
 
@@ -32,6 +32,7 @@ Section "Install Core Files"
   File "PosBridge.exe"
   File "nssm.exe"
   File "SumatraPDF.exe"
+  File "config.json"
 
   ; --- 2. ຕັ້ງຄ່າ Windows Service ຜ່ານ NSSM ---
   DetailPrint "Configuring Windows Service..."

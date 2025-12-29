@@ -1,6 +1,6 @@
 {
   "name": "service-print-pos-app",
-  "version": "1.1.0",
+  "version": "1.1.2",
   "description": "Smart Bridge App for Vue POS (Standalone Executable) Develop By SornTech Innovation Tel/whatsapp: +85620 28729723.",
   "main": "server.js",
   "scripts": {
