@@ -63,7 +63,6 @@ POS Bridge Service ໃຊ້ໄຟລ໌ `config.json` ສຳລັບການ�
 | --------------------- | -------------------------------- |
 | `LARAVEL_API_URL`     | URL ຂອງ POS Backend API          |
 | `POLLING_INTERVAL_MS` | ໄລຍະເວລາໃນການດຶງ Print Jobs (ms) |
-| `API_PORT`            | Port ສຳລັບ Local API             |
 
 ---
 
