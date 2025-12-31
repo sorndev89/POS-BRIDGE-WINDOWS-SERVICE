@@ -1,4 +1,5 @@
 {
   "LARAVEL_API_URL": "http://localhost:8000/api",
-  "POLLING_INTERVAL_MS": 5000
+  "POLLING_INTERVAL_MS": 5000,
+  "ENABLE_ALERT_SOUND": true
 }

@@ -1,7 +1,7 @@
 ; === 1. ຕັ້ງຄ່າພື້ນຖານ ===
 !define APPNAME "service print pos app"
 !define COMPANYNAME "SornTech Innovation"
-!define APPVERSION "1.1.2" 
+!define APPVERSION "1.1.3" 
 !define SERVICEDESC "Smart Bridge App for Vue POS. Developed by SornTech Innovation."
 !define APPDIR "POSBridgeApp"
 
@@ -33,6 +33,8 @@ Section "Install Core Files"
   File "nssm.exe"
   File "SumatraPDF.exe"
   File "config.json"
+  File "alert.wav"
+  File "error.wav"
 
   ; --- 2. ຕັ້ງຄ່າ Windows Service ຜ່ານ NSSM ---
   DetailPrint "Configuring Windows Service..."
@@ -80,6 +82,9 @@ Section "Uninstall"
   Delete "$INSTDIR\PosBridge.exe"
   Delete "$INSTDIR\nssm.exe"
   Delete "$INSTDIR\SumatraPDF.exe"
+  Delete "$INSTDIR\config.json" ; Ensure config.json is also deleted
+  Delete "$INSTDIR\alert.wav"
+  Delete "$INSTDIR\error.wav"
   Delete "$INSTDIR\uninstall.exe"
   
   ; ລຶບ Folder ຫຼັກ (RMDir ຈະລຶບໄດ້ກໍຕໍ່ເມື່ອ Folder ວ່າງ)

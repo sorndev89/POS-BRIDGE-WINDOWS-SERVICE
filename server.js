@@ -48,6 +48,7 @@ try {
 // Precedence: config.json > environment variable > hardcoded default
 const LARAVEL_API_URL = config.LARAVEL_API_URL ;
 const POLLING_INTERVAL = parseInt(config.POLLING_INTERVAL_MS);
+const ENABLE_ALERT_SOUND = config.ENABLE_ALERT_SOUND === true; // NEW: ໂຫຼດຄ່າຈາກ config.json, ໃຫ້ແນ່ໃຈວ່າເປັນ boolean
 let isProcessingJobs = false; // Flag to prevent concurrent job processing
 
 
@@ -101,8 +102,117 @@ function printFileWrapper(filePath, printerName) {
     });
 }
 
-// === API Endpoints ===
 
+// NEW: System Sound Logic
+const SOUND_FILES = {
+    'alert': 'alert.wav',
+    'error': 'error.wav',
+    // Add other sound types here as .wav files
+};
+
+
+function playSystemSound(soundType) {
+    if (!ENABLE_ALERT_SOUND) {
+        console.log(`[System Sound] Sound playback is disabled in config.json.`);
+        return;
+    }
+
+    const filename = SOUND_FILES[soundType];
+    if (!filename) {
+        console.warn(`[System Sound] ບໍ່ພົບໄຟລ໌ສຽງສຳລັບປະເພດ: ${soundType}`);
+        return;
+    }
+
+    const soundPath = path.join(getAppRootPath(), filename);
+    
+    if (!fs.existsSync(soundPath)) {
+        console.warn(`[System Sound] ບໍ່ພົບໄຟລ໌ສຽງທີ່: ${soundPath}`);
+        return;
+    }
+
+    if (IS_WINDOWS) {
+
+    function playWindowsSound(soundPath) {
+        if (!fs.existsSync(soundPath)) {
+            console.warn('[System Sound] File not found:', soundPath);
+            return;
+        }
+
+        // Escape single quote for PowerShell
+        const safePath = soundPath.replace(/'/g, "''");
+
+        // IMPORTANT: single-line PowerShell command
+        const psCommand = `
+            powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command "
+            try {
+            $player = New-Object System.Media.SoundPlayer '${safePath}';
+            $player.Load();
+            $player.PlaySync();
+            } catch {
+            [System.Media.SystemSounds]::Beep.Play();
+            }
+        "
+        `.replace(/\n/g, ' ');
+
+        exec(psCommand, (error, stdout, stderr) => {
+            if (error) {
+                console.error('[System Sound] PowerShell exec error:', error.message);
+            }
+            if (stderr) {
+                console.error('[System Sound] PowerShell stderr:', stderr);
+            }
+        });
+    }
+
+    // 👉 เรียกใช้ตรงนี้แทน logic เก่า
+    playWindowsSound(soundPath);
+    return;
+}
+
+    if (os.platform() === 'darwin') {
+        // macOS: ໃຊ້ afplay (ຮອງຮັບ WAV)
+        command = `afplay "${soundPath}"`;
+        console.log(`[System Sound] ຫຼິ້ນສຽງ WAV ໃນ macOS: ${soundPath}`);
+    } else if (os.platform() === 'linux') {
+        // Linux: ໃຊ້ aplay (ຮອງຮັບ WAV)
+        // ຄຳເຕືອນ: aplay ຕ້ອງຖືກຕິດຕັ້ງຢູ່ໃນລະບົບ (ສ່ວນໃຫຍ່ມີຕິດມາແລ້ວ)
+        command = `aplay "${soundPath}"`; 
+        console.log(`[System Sound] ຫຼິ້ນສຽງ WAV ໃນ Linux: ${soundPath}`);
+    } else {
+        console.warn(`[System Sound] ລະບົບປະຕິບັດການ ${os.platform()} ຍັງບໍ່ຖືກຮອງຮັບສຳລັບການຫຼິ້ນສຽງ.`);
+        return;
+    }
+
+    if (command) { // This block now only for non-Windows OS
+        exec(command, (error) => {
+            if (error) {
+                console.error(`[System Sound] ເກີດຂໍ້ຜິດພາດໃນການຫຼິ້ນສຽງ: ${error.message}`);
+                // ຄຳແນະນຳເພີ່ມເຕີມສຳລັບ Linux
+                if (os.platform() === 'linux') {
+                    console.error('[System Sound] ຂໍ້ແນະນຳ: ສຳລັບ Linux, ໃຫ້ແນ່ໃຈວ່າໂປຣແກຣມ aplay ໄດ້ຖືກຕິດຕັ້ງແລ້ວ (ສ່ວນໃຫຍ່ມີຕິດມາແລ້ວ).');
+                }
+            } else {
+                console.log(`[System Sound] ຄຳສັ່ງຫຼິ້ນສຽງສຳເລັດ.`);
+            }
+        });
+    }
+}
+
+// NEW: Endpoint to play specific system sounds
+app.get('/play-sound', (req, res) => {
+    const soundType = req.query.type; // e.g., 'error', 'alert'
+
+    if (!soundType) {
+        return res.status(400).json({ success: false, message: 'Missing sound type parameter.' });
+    }
+
+    if (!SOUND_FILES[soundType]) {
+        return res.status(404).json({ success: false, message: `Sound type '${soundType}' not found or not configured.` });
+    }
+
+    playSystemSound(soundType); // Play the sound (respects ENABLE_ALERT_SOUND internally)
+    res.json({ success: true, message: `Attempting to play sound type: ${soundType}` });
+});
 
 
 // === Polling Function to Fetch and Process Print Jobs ===
@@ -119,8 +229,11 @@ async function fetchAndProcessPrintJobs() {
         if (!response.ok) {
             throw new Error(`HTTP error! status: ${response.status}`);
         }
-        const pendingJobs = await response.json();
-        console.log('[Polling] Received pending jobs:', pendingJobs);
+        const responseData = await response.json(); // ປ່ຽນເປັນ responseData
+        const pendingJobs = responseData.pendingJobs || []; // ດຶງ pendingJobs ອອກມາ
+        const alertSoundStatus = responseData.alert_sound; // ດຶງ alert_sound ອອກມາ
+
+        console.log('[Polling] Received response data:', responseData);
 
         if (pendingJobs.length > 0) {
             console.log(`[Polling] Found ${pendingJobs.length} pending print jobs.`);
@@ -191,6 +304,12 @@ async function fetchAndProcessPrintJobs() {
         } else {
             console.log('[Polling] No pending print jobs found.');
         }
+
+        // NEW: Logic ສຳລັບສຽງແຈ້ງເຕືອນ
+        if (ENABLE_ALERT_SOUND && alertSoundStatus === 1) { // ກວດສອບ ENABLE_ALERT_SOUND
+            playSystemSound('alert'); // Call new generic function
+        }
+
     } catch (error) {
         console.error('[Polling] Error fetching print jobs from Laravel Backend:', error.message);
     } finally {
@@ -256,8 +375,9 @@ app.post('/print/pdf', async (req, res) => {
 app.listen(PORT, () => {
     console.log(`[POS Bridge] Running on ${os.platform()} (${os.arch()})`);
     console.log(`Listening on http://localhost:${PORT}`);
-     console.log(`[POS Bridge] Polling Laravel API at: ${LARAVEL_API_URL}`);
+    console.log(`[POS Bridge] Polling Laravel API at: ${LARAVEL_API_URL}`);
     console.log(`[POS Bridge] Polling interval: ${POLLING_INTERVAL / 1000} seconds.`);
+    console.log(`[POS Bridge] Alert Sound enabled: ${ENABLE_ALERT_SOUND}`); // NEW: Log ສະຖານະສຽງ
 
     // Start polling immediately and then at intervals
     fetchAndProcessPrintJobs(); 
