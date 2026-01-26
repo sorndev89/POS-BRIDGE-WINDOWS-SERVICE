@@ -1,10 +1,11 @@
 {
   "name": "service-print-pos-app",
-  "version": "1.1.3",
+  "version": "1.2.0",
   "description": "Smart Bridge App for Vue POS (Standalone Executable) Develop By SornTech Innovation Tel/whatsapp: +85620 28729723.",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
+    "test": "jest",
     "build": "pkg package.json --targets node18-win-x64 --output PosBridge.exe"
   },
   "bin": {
@@ -24,12 +25,17 @@
     "body-parser": "^1.20.2",
     "cors": "^2.8.5",
     "escpos": "^3.0.0-alpha.6",
+    "escpos-serialport": "^3.0.0-alpha.4",
     "escpos-usb": "^3.0.0-alpha.4",
     "express": "^4.19.2",
     "fs": "0.0.1-security",
-    "node-printer": "^1.0.4"
+    "node-printer": "^1.0.4",
+    "serialport": "^13.0.0",
+    "socket.io": "^4.8.3"
   },
   "devDependencies": {
-    "pkg": "^5.8.1"
+    "jest": "^30.2.0",
+    "pkg": "^5.8.1",
+    "supertest": "^7.2.2"
   }
 }

@@ -7,9 +7,15 @@ const os = require('os');
 const { exec } = require('child_process');
 const escpos = require('escpos');
 const USB = require('escpos-usb');
+const { SerialPort } = require('serialport'); // NEW: Import SerialPort
+const EscposSerial = require('escpos-serialport'); // NEW: Import EscposSerial adapter
 
 
 const app = express();
+const http = require('http').createServer(app); // Wrap express with http server
+const io = require('socket.io')(http, {
+    cors: { origin: "*" }
+});
 
 // --- ຕັ້ງຄ່າ Middleware ---
 app.use(cors({ origin: true, credentials: true }));
@@ -49,6 +55,16 @@ try {
 const LARAVEL_API_URL = config.LARAVEL_API_URL ;
 const POLLING_INTERVAL = parseInt(config.POLLING_INTERVAL_MS);
 const ENABLE_ALERT_SOUND = config.ENABLE_ALERT_SOUND === true; // NEW: ໂຫຼດຄ່າຈາກ config.json, ໃຫ້ແນ່ໃຈວ່າເປັນ boolean
+const ENABLE_POLLING = config.ENABLE_POLLING !== false; // Default to true if not present
+const VFD_PORT = config.VFD_PORT; // NEW: VFD Port
+const VFD_BAUDRATE = parseInt(config.VFD_BAUDRATE) || 9600; // NEW: VFD BaudRate
+
+// NEW: Customer View Config
+const ENABLE_CUSTOMER_VIEW = config.ENABLE_CUSTOMER_VIEW === true;
+const BROWSER_PATH = config.BROWSER_PATH;
+const CUSTOMER_VIEW_URL = config.CUSTOMER_VIEW_URL || `http://localhost:${PORT}/view`;
+const WINDOW_POSITION = config.WINDOW_POSITION || "0,0";
+
 let isProcessingJobs = false; // Flag to prevent concurrent job processing
 
 
@@ -317,12 +333,13 @@ async function fetchAndProcessPrintJobs() {
     }
 }
 
-// ດຶງລາຍຊື່ Printer
+// NEW: Endpoint to get a list of installed printers
 app.get('/list-printers', async (req, res) => {
     try {
         const printerList = await getPrintersWrapper();
-        res.json(printerList);
+        res.json({ success: true, printers: printerList }); // Return as { printers: [...] }
     } catch (e) {
+        console.error('[Printers Endpoint] Error listing printers:', e);
         res.status(500).json({ success: false, message: 'Cannot list printers.', error: e.message });
     }
 });
@@ -344,6 +361,162 @@ app.post('/hardware/open-drawer', (req, res) => {
         });
     } catch (e) {
         res.status(500).json({ success: false, message: 'Drawer exception: ' + e.message });
+    }
+});
+
+// ==========================================
+// NEW: WEB CUSTOMER DISPLAY LOGIC
+// ==========================================
+
+// 1. Serve Static Files (The HTML View)
+app.use('/view', express.static(path.join(getAppRootPath(), 'view')));
+
+// 2. Socket Connection
+io.on('connection', (socket) => {
+    console.log('[Socket] New client connected:', socket.id);
+    socket.on('disconnect', () => {
+        console.log('[Socket] Client disconnected:', socket.id);
+    });
+});
+
+// 3. API to Update Cart
+app.post('/display/update-cart', (req, res) => {
+    // Expected Payload: { items: [], totalQty, totalAmount, qrCode }
+    const data = req.body;
+    console.log('[Display] Updating cart:', data.totalAmount);
+    
+    io.emit('cart:update', data); // Broadcast to all connected screens
+    res.json({ success: true, message: 'Cart updated' });
+});
+
+// 4. API to Update Ads
+app.post('/display/ads', (req, res) => {
+    // Expected Payload: { type: 'image'|'video', url: '...' }
+    const data = req.body;
+    console.log('[Display] Updating ads:', data.url);
+    
+    io.emit('ads:update', data);
+    res.json({ success: true, message: 'Ads updated' });
+});
+
+// 5. API to Clear Display
+app.post('/display/clear', (req, res) => {
+    io.emit('display:clear');
+    res.json({ success: true, message: 'Display cleared' });
+});
+
+
+// NEW: Endpoint to list all Serial Ports (for VFD detection)
+app.get('/hardware/ports', async (req, res) => {
+    try {
+        const ports = await SerialPort.list();
+        res.json({ success: true, ports: ports });
+    } catch (err) {
+        console.error('[Serial Port] Error listing ports:', err);
+        res.status(500).json({ success: false, message: 'Could not list serial ports.', error: err.message });
+    }
+});
+
+// NEW: Endpoint to display text on VFD
+app.post('/hardware/display', async (req, res) => {
+    const { line1, line2 } = req.body;
+
+    if (!VFD_PORT) {
+        return res.status(400).json({ success: false, message: 'VFD_PORT is not configured in config.json' });
+    }
+
+    try {
+        // Create Serial connection
+        const device = new EscposSerial(VFD_PORT, { baudRate: VFD_BAUDRATE });
+        const printer = new escpos.Printer(device);
+
+        device.open((error) => {
+            if (error) {
+                console.error('[VFD] Open error:', error);
+                return res.status(500).json({ success: false, message: 'Could not open VFD port: ' + error.message });
+            }
+
+            // Commands to clear and write
+            // Note: Standard ESC/POS commands used by VFDs
+            printer
+                .font('a')
+                .align('ct') // Center align if possible, but VFDs are usually fixed width 20 chars
+                .style('normal')
+                .size(1, 1);
+
+            // Manual clear might be better for some VFDs if printer.text() doesn't handle it well
+            // But usually printer object manages it. 
+            // VFDs usually need specific initialization or just raw text.
+            // Using standard escpos text output:
+            
+            // Note: VFDs are often 2x20 lines. 'escpos' might treat it as paper.
+            // We'll try standard text output. For explicit line control, we might need raw commands.
+            // But let's try generic first.
+            
+            // Specific VFD clear command often: 0x0C (Form Feed) or ESC @ (Initialize)
+            // escpos library 'text' usually sends newline.
+            
+            // Simple strategy for 2-line VFD:
+            // 1. Initialize/Clear
+            // 2. Write Line 1
+            // 3. Move cursor / Newline
+            // 4. Write Line 2
+            
+            // Using raw commands for VFD is often safer than 'printer.text()' which assumes paper width
+            // Common VFD Clear: 0x0C
+            device.write(Buffer.from([0x0C])); // Clear screen
+            
+            setTimeout(() => {
+                if (line1) {
+                    device.write(Buffer.from(line1.substring(0, 20))); // Write line 1 (max 20 chars)
+                }
+                
+                if (line2) {
+                     // Move to 2nd line. Many VFDs wrap automatically or use specific command (e.g. CR/LF or 0x0D 0x0A)
+                     // Universal move to bottom line often: 0x0D 0x0A (if not wrapped) or 0x1B 0x5B 0x4C (some models)
+                     // Let's try simple CR LF then write
+                     device.write(Buffer.from([0x0D, 0x0A])); 
+                     device.write(Buffer.from(line2.substring(0, 20)));
+                }
+
+                // Close after short delay to ensure transmission
+                setTimeout(() => {
+                    printer.close(() => {
+                        res.json({ success: true, message: 'Displayed text on VFD' });
+                    });
+                }, 100);
+            }, 50); // Small delay after clear
+        });
+
+    } catch (e) {
+        console.error('[VFD] Exception:', e);
+        res.status(500).json({ success: false, message: 'VFD Exception: ' + e.message });
+    }
+});
+
+// NEW: Endpoint to clear VFD
+app.post('/hardware/display/clear', async (req, res) => {
+    if (!VFD_PORT) {
+        return res.status(400).json({ success: false, message: 'VFD_PORT is not configured in config.json' });
+    }
+
+    try {
+        const device = new EscposSerial(VFD_PORT, { baudRate: VFD_BAUDRATE });
+        const printer = new escpos.Printer(device);
+
+        device.open((error) => {
+            if (error) {
+                return res.status(500).json({ success: false, message: 'Could not open VFD port: ' + error.message });
+            }
+            device.write(Buffer.from([0x0C])); // Clear command
+             setTimeout(() => {
+                printer.close(() => {
+                    res.json({ success: true, message: 'Cleared VFD' });
+                });
+            }, 100);
+        });
+    } catch (e) {
+        res.status(500).json({ success: false, message: 'VFD Exception: ' + e.message });
     }
 });
 
@@ -372,15 +545,68 @@ app.post('/print/pdf', async (req, res) => {
     }
 });
 
-app.listen(PORT, () => {
-    console.log(`[POS Bridge] Running on ${os.platform()} (${os.arch()})`);
-    console.log(`Listening on http://localhost:${PORT}`);
-    console.log(`[POS Bridge] Polling Laravel API at: ${LARAVEL_API_URL}`);
-    console.log(`[POS Bridge] Polling interval: ${POLLING_INTERVAL / 1000} seconds.`);
-    console.log(`[POS Bridge] Alert Sound enabled: ${ENABLE_ALERT_SOUND}`); // NEW: Log ສະຖານະສຽງ
+// 6. Auto-Launch Browser Logic
+function launchCustomerDisplay() {
+    if (!ENABLE_CUSTOMER_VIEW || !BROWSER_PATH) return;
 
-    // Start polling immediately and then at intervals
-    fetchAndProcessPrintJobs(); 
-    setInterval(fetchAndProcessPrintJobs, POLLING_INTERVAL);
+    console.log('[Display] Launching Customer View Kiosk...');
+    
+    // Command to open Chrome in Kiosk mode
+    // --app=URL : Opens in app mode
+    // --kiosk : Full screen
+    // --window-position=x,y : Position on extended monitor
+    // --user-data-dir : Separate profile to avoid conflicts
+    
+    const userDataDir = path.join(os.tmpdir(), 'pos-bridge-kiosk');
+    // Ensure dir exists
+    if (!fs.existsSync(userDataDir)) {
+        try { fs.mkdirSync(userDataDir); } catch(e){}
+    }
 
-});
+    const args = [
+        `--app=${CUSTOMER_VIEW_URL}`,
+        `--window-position=${WINDOW_POSITION}`,
+        `--kiosk`,
+        `--user-data-dir="${userDataDir}"`, // Use quotes for path with spaces
+        `--no-first-run`,
+        `--no-default-browser-check`
+    ];
+
+    const command = `"${BROWSER_PATH}" ${args.join(' ')}`;
+    console.log(`[Display] Executing: ${command}`);
+
+    exec(command, (error) => {
+        if (error) {
+            console.error('[Display] Error launching browser:', error.message);
+        }
+    });
+}
+
+// Change app.listen to server.listen (http server)
+if (require.main === module) {
+    http.listen(PORT, () => {
+        console.log(`[POS Bridge] Running on ${os.platform()} (${os.arch()})`);
+        console.log(`Listening on http://localhost:${PORT}`);
+        console.log(`[POS Bridge] Polling Laravel API at: ${LARAVEL_API_URL}`);
+        console.log(`[POS Bridge] Polling interval: ${POLLING_INTERVAL / 1000} seconds.`);
+        console.log(`[POS Bridge] Alert Sound enabled: ${ENABLE_ALERT_SOUND}`); 
+        console.log(`[POS Bridge] Polling enabled: ${ENABLE_POLLING}`);
+        console.log(`[POS Bridge] Customer View enabled: ${ENABLE_CUSTOMER_VIEW}`);
+
+        // Start polling immediately and then at intervals IF enabled
+        if (ENABLE_POLLING) {
+            fetchAndProcessPrintJobs(); 
+            setInterval(fetchAndProcessPrintJobs, POLLING_INTERVAL);
+        } else {
+            console.log('[POS Bridge] Polling is DISABLED in config.json. Mode: Direct API Only.');
+        }
+
+        // Launch Customer View if enabled
+        if (ENABLE_CUSTOMER_VIEW) {
+            // Delay slightly to ensure server is ready
+            setTimeout(launchCustomerDisplay, 2000);
+        }
+    });
+}
+
+module.exports = http; // Export for testing

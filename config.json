@@ -1,5 +1,12 @@
 {
   "LARAVEL_API_URL": "http://localhost:8000/api",
   "POLLING_INTERVAL_MS": 5000,
-  "ENABLE_ALERT_SOUND": true
+  "ENABLE_ALERT_SOUND": true,
+  "ENABLE_POLLING": false,
+  "VFD_PORT": "",
+  "VFD_BAUDRATE": 9600,
+  "ENABLE_CUSTOMER_VIEW": true,
+  "CUSTOMER_VIEW_URL": "http://localhost:9100/view",
+  "BROWSER_PATH": "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe",
+  "WINDOW_POSITION": "1920,0"
 }

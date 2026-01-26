@@ -1,7 +1,7 @@
 ; === 1. ຕັ້ງຄ່າພື້ນຖານ ===
 !define APPNAME "service print pos app"
 !define COMPANYNAME "SornTech Innovation"
-!define APPVERSION "1.1.3" 
+!define APPVERSION "1.2.0" 
 !define SERVICEDESC "Smart Bridge App for Vue POS. Developed by SornTech Innovation."
 !define APPDIR "POSBridgeApp"
 

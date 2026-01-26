@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Customer Display</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body class="bg-gray-200 flex h-screen w-screen p-4 gap-4">
+
+    <!-- LEFT SIDE: ADS / PROMOTION (Floating Card) -->
+    <div id="left-panel" class="w-1/2 h-full rounded-3xl overflow-hidden shadow-2xl relative bg-black transform transition-all duration-700 hover:scale-[1.01]">
+        <img id="ad-image" src="https://placehold.co/800x600/1a1a1a/FFF?text=Welcome+to+OryxPOS" class="object-cover w-full h-full transition-opacity duration-1000">
+        <video id="ad-video" class="object-cover w-full h-full absolute inset-0 hidden" loop muted playsinline></video>
+        
+        <!-- Overlay Gradient for text readability if needed -->
+        <div class="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent opacity-60"></div>
+        
+        <div class="absolute bottom-10 left-10 text-white z-10">
+            <h2 class="text-4xl font-bold mb-2 tracking-tight">ORYX POS</h2>
+            <p class="text-lg opacity-90 font-light">Smart Point of Sale System</p>
+        </div>
+    </div>
+
+    <!-- RIGHT SIDE: CART / TOTAL (Glass Panel) -->
+    <div id="right-panel" class="w-1/2 h-full flex flex-col glass rounded-3xl overflow-hidden shadow-2xl">
+        
+        <!-- HEADER -->
+        <div class="bg-white/50 backdrop-blur-md p-6 border-b border-gray-100 z-10 flex justify-between items-center">
+            <h1 class="text-2xl font-bold text-gray-800 uppercase tracking-wider flex items-center gap-3">
+                <span class="bg-blue-600 w-2 h-8 rounded-full"></span>
+                ລາຍການສິນຄ້າ
+            </h1>
+            <span class="text-sm text-gray-500 font-medium px-3 py-1 bg-gray-100 rounded-full">Items List</span>
+        </div>
+
+        <!-- CART ITEMS LIST -->
+        <div id="cart-container" class="flex-1 overflow-y-auto p-6 space-y-4">
+            <!-- Empty State -->
+            <div id="empty-cart" class="h-full flex flex-col items-center justify-center text-gray-400">
+                <div class="bg-gray-50 p-6 rounded-full mb-4 shadow-inner">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-16 w-16 text-gray-300" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z" />
+                    </svg>
+                </div>
+                <p class="text-lg font-medium text-gray-500">ຍັງບໍ່ມີລາຍການສິນຄ້າ</p>
+                <p class="text-sm text-gray-400">Please scan an item to start</p>
+            </div>
+            <!-- Items will be injected javascript -->
+        </div>
+
+        <!-- SUMMARY FOOTER (Dark Glass) -->
+        <div class="glass-dark text-white p-5 relative overflow-hidden">
+            <!-- Decor shapes -->
+            <div class="absolute top-0 right-0 w-64 h-64 bg-green-500/10 rounded-full blur-3xl -mr-16 -mt-16 pointer-events-none"></div>
+
+            <div class="relative z-10">
+                <div class="flex justify-between items-center mb-1 text-gray-300">
+                    <span class="text-sm font-light">ຈຳນວນລວມ (Qty)</span>
+                    <span id="total-qty" class="text-lg font-medium bg-white/10 px-3 py-0.5 rounded-lg">0</span>
+                </div>
+
+                <!-- DISCOUNT ROW (Hidden by default) -->
+                <div id="discount-row" class="flex justify-between items-center mb-1 text-red-300 hidden">
+                    <span class="text-sm font-light">ສ່ວນຫຼຸດ (Discount)</span>
+                    <span class="text-lg font-medium bg-red-500/20 px-3 py-0.5 rounded-lg">- <span id="total-discount">0</span></span>
+                </div>
+                
+                <div class="flex flex-col items-end mt-1">
+                     <span class="text-xs text-gray-400 uppercase tracking-widest mb-0.5">Total Amount</span>
+                    <div class="flex items-baseline gap-2">
+                        <span id="total-amount" class="text-2xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-green-300 to-emerald-500 tracking-tighter drop-shadow-sm">0</span>
+                        <span class="text-xl text-gray-400 font-light">₭</span>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- QR CODE (Overlay) -->
+            <div id="payment-qr" class="hidden absolute inset-0 bg-white/95 backdrop-blur-xl z-20 flex flex-col items-center justify-center transition-all duration-300">
+                 <div class="p-4 bg-white rounded-2xl shadow-xl border border-gray-100 transform scale-100 hover:scale-105 transition-transform">
+                    <img id="qr-image" src="" class="h-48 w-48 object-contain mix-blend-multiply">
+                 </div>
+                 <div class="mt-6 text-center">
+                     <p class="font-bold text-2xl text-gray-800 mb-1">Scan to Pay</p>
+                     <p class="text-gray-500">ສະແກນ QR ເພື່ອຊຳລະເງິນ</p>
+                 </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="/socket.io/socket.io.js"></script>
+    <script src="script.js"></script>
+</body>
+</html>
