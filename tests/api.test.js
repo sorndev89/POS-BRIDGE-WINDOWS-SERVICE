@@ -61,8 +61,8 @@ describe('POS Bridge API Tests', () => {
 
     // --- 1. Printer Tests ---
     
-    test('GET /list-printers should return printer list', async () => {
-        const res = await request(server).get('/list-printers');
+    test('GET /printers should return printer list', async () => {
+        const res = await request(server).get('/printers');
         expect(res.statusCode).toEqual(200);
         expect(res.body.success).toBe(true);
         expect(Array.isArray(res.body.printers)).toBe(true);

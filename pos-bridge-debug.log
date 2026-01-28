@@ -1,0 +1,59 @@
+[2026-01-26T16:29:51.861Z] [INFO] --- STARTING POS BRIDGE APP ---
+[2026-01-26T16:29:51.863Z] [INFO] Node Version: v25.4.0
+[2026-01-26T16:29:51.863Z] [INFO] Platform: darwin Arch: arm64
+[2026-01-26T16:29:51.863Z] [INFO] App Root Path: /Users/macpro/Developer/Laravel+Vue/OryxSystem/OryxPOS/POS_BRIDGE_ROOTV2
+[2026-01-26T16:29:52.040Z] [INFO] [Module] escpos loaded
+[2026-01-26T16:29:52.040Z] [INFO] [Module] escpos-usb loaded
+[2026-01-26T16:29:52.064Z] [INFO] [Module] serialport loaded
+[2026-01-26T16:29:52.064Z] [INFO] [Module] escpos-serialport loaded
+[2026-01-26T16:29:52.100Z] [INFO] [POS Bridge] Loaded configuration from /Users/macpro/Developer/Laravel+Vue/OryxSystem/OryxPOS/POS_BRIDGE_ROOTV2/config.json
+[2026-01-26T16:29:52.101Z] [ERROR] (node:30112) [DEP0040] DeprecationWarning: The `punycode` module is deprecated. Please use a userland alternative instead.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+[2026-01-26T16:29:52.102Z] [INFO] [POS Bridge] Running on darwin (arm64)
+[2026-01-26T16:29:52.102Z] [INFO] Listening on http://localhost:9100
+[2026-01-26T16:29:52.102Z] [INFO] [POS Bridge] Polling Laravel API at: http://localhost:8000/api
+[2026-01-26T16:29:52.102Z] [INFO] [POS Bridge] Polling interval: 5 seconds.
+[2026-01-26T16:29:52.102Z] [INFO] [POS Bridge] Alert Sound enabled: true
+[2026-01-26T16:29:52.102Z] [INFO] [POS Bridge] Polling enabled: false
+[2026-01-26T16:29:52.102Z] [INFO] [POS Bridge] Customer View enabled: true
+[2026-01-26T16:29:52.102Z] [INFO] [POS Bridge] Polling is DISABLED in config.json. Mode: Direct API Only.
+[2026-01-26T16:29:54.104Z] [INFO] [Display] Launching Customer View Kiosk...
+[2026-01-26T16:29:54.105Z] [INFO] [Display] Executing: "C:\Program Files\Google\Chrome\Application\chrome.exe" --app=http://localhost:9100/view --window-position=1920,0 --kiosk --user-data-dir="/var/folders/kh/xbnzspkd3sv9j8t3kr0rdl9r0000gn/T/pos-bridge-kiosk" --no-first-run --no-default-browser-check
+[2026-01-26T16:29:54.126Z] [ERROR] [Display] Error launching browser: Command failed: "C:\Program Files\Google\Chrome\Application\chrome.exe" --app=http://localhost:9100/view --window-position=1920,0 --kiosk --user-data-dir="/var/folders/kh/xbnzspkd3sv9j8t3kr0rdl9r0000gn/T/pos-bridge-kiosk" --no-first-run --no-default-browser-check
+/bin/sh: C:\Program Files\Google\Chrome\Application\chrome.exe: command not found
+
+[2026-01-26T16:30:05.571Z] [INFO] --- STARTING POS BRIDGE APP ---
+[2026-01-26T16:30:05.573Z] [INFO] Node Version: v25.4.0
+[2026-01-26T16:30:05.573Z] [INFO] Platform: darwin Arch: arm64
+[2026-01-26T16:30:05.574Z] [INFO] App Root Path: /Users/macpro/Developer/Laravel+Vue/OryxSystem/OryxPOS/POS_BRIDGE_ROOTV2
+[2026-01-26T16:30:05.617Z] [INFO] [Module] escpos loaded
+[2026-01-26T16:30:05.617Z] [INFO] [Module] escpos-usb loaded
+[2026-01-26T16:30:05.618Z] [INFO] [Module] serialport loaded
+[2026-01-26T16:30:05.618Z] [INFO] [Module] escpos-serialport loaded
+[2026-01-26T16:30:05.667Z] [INFO] [POS Bridge] Loaded configuration from /Users/macpro/Developer/Laravel+Vue/OryxSystem/OryxPOS/POS_BRIDGE_ROOTV2/config.json
+[2026-01-26T16:30:05.733Z] [INFO] [Display] Updating cart: 1000
+[2026-01-26T16:30:05.754Z] [INFO] [Socket] New client connected: 9IYFqGCy0f1D_Y3lAAAB
+[2026-01-26T16:30:05.760Z] [INFO] [Socket] Client disconnected: 9IYFqGCy0f1D_Y3lAAAB
+[2026-01-26T17:29:28.386Z] [INFO] --- STARTING POS BRIDGE APP ---
+[2026-01-26T17:29:28.387Z] [INFO] Node Version: v25.4.0
+[2026-01-26T17:29:28.387Z] [INFO] Platform: darwin Arch: arm64
+[2026-01-26T17:29:28.388Z] [INFO] App Root Path: /Users/macpro/Developer/Laravel+Vue/OryxSystem/OryxPOS/POS_BRIDGE_ROOTV2
+[2026-01-26T17:29:28.426Z] [INFO] [Module] escpos loaded
+[2026-01-26T17:29:28.426Z] [INFO] [Module] escpos-usb loaded
+[2026-01-26T17:29:28.427Z] [INFO] [Module] serialport loaded
+[2026-01-26T17:29:28.427Z] [INFO] [Module] escpos-serialport loaded
+[2026-01-26T17:29:28.468Z] [INFO] [POS Bridge] Loaded configuration from /Users/macpro/Developer/Laravel+Vue/OryxSystem/OryxPOS/POS_BRIDGE_ROOTV2/config.json
+[2026-01-26T17:29:28.515Z] [INFO] [Display] Updating cart: 1000
+[2026-01-26T17:29:28.529Z] [INFO] [Socket] New client connected: 4InVAcnkIgiM5lVfAAAB
+[2026-01-26T17:29:28.530Z] [INFO] [Socket] Syncing last cart state to: 4InVAcnkIgiM5lVfAAAB
+[2026-01-26T17:29:28.536Z] [INFO] [Socket] Client disconnected: 4InVAcnkIgiM5lVfAAAB
+[2026-01-27T03:28:37.784Z] [INFO] [Display] Updating cart: 22000
+[2026-01-27T03:28:38.270Z] [INFO] [Display] Updating cart: 30000
+[2026-01-27T03:28:41.892Z] [INFO] [Display] Updating ads: undefined
+[2026-01-27T03:38:40.533Z] [INFO] [Display] Updating cart: 50000
+[2026-01-27T03:38:40.943Z] [INFO] [Display] Updating cart: 72000
+[2026-01-27T03:38:41.388Z] [INFO] [Display] Updating cart: 94000
+[2026-01-27T03:38:44.553Z] [INFO] [Display] Updating ads: undefined
+[2026-01-27T03:47:36.203Z] [INFO] [Display] Updating cart: 50000
+[2026-01-27T03:47:36.698Z] [INFO] [Display] Updating cart: 72000
+[2026-01-27T03:47:39.635Z] [INFO] [Display] Updating ads: undefined

@@ -34,7 +34,15 @@ Section "Install Core Files"
   File "SumatraPDF.exe"
   File "config.json"
   File "alert.wav"
+  File "alert.wav"
   File "error.wav"
+  
+  ; Include the view folder for Customer Display
+  SetOutPath "$INSTDIR\view"
+  File /r "view\*.*"
+  
+  ; Reset output path needed??? No, next command is just File or execution, but usually good practice to reset if we change it.
+  SetOutPath "$INSTDIR"
 
   ; --- 2. ຕັ້ງຄ່າ Windows Service ຜ່ານ NSSM ---
   DetailPrint "Configuring Windows Service..."
@@ -64,7 +72,20 @@ Section "Install Core Files"
   WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\${APPNAME}" "Publisher" "${COMPANYNAME}"
 
   DetailPrint "Installation completed successfully."
+  
+  ; --- 6. ສ້າງ Shortcuts (ສຳຄັນສຳລັບການ Auto-launch Chrome) ---
+  ; Create Desktop Shortcut
+  CreateShortCut "$DESKTOP\${APPNAME}.lnk" "$INSTDIR\PosBridge.exe" "" "$INSTDIR\PosBridge.exe" 0
+  
+  ; Create Start Menu Startup Shortcut (ເພື່ອໃຫ້ Chrome ເປີດເອງຕອນເຂົ້າ Windows)
+  CreateShortCut "$SMSTARTUP\${APPNAME}.lnk" "$INSTDIR\PosBridge.exe" "" "$INSTDIR\PosBridge.exe" 0
+  
+  ; Create Start Menu Program Shortcut
+  CreateDirectory "$SMPROGRAMS\${APPNAME}"
+  CreateShortCut "$SMPROGRAMS\${APPNAME}\${APPNAME}.lnk" "$INSTDIR\PosBridge.exe" "" "$INSTDIR\PosBridge.exe" 0
+  CreateShortCut "$SMPROGRAMS\${APPNAME}\Uninstall.lnk" "$INSTDIR\uninstall.exe" "" "$INSTDIR\uninstall.exe" 0
 SectionEnd
+
 
 ; === 4. ພາກສ່ວນຖອນການຕິດຕັ້ງ ===
 Section "Uninstall"
@@ -85,9 +106,16 @@ Section "Uninstall"
   Delete "$INSTDIR\config.json" ; Ensure config.json is also deleted
   Delete "$INSTDIR\alert.wav"
   Delete "$INSTDIR\error.wav"
+  Delete "$INSTDIR\pos-bridge-debug.log" ; NEW: Delete log file
   Delete "$INSTDIR\uninstall.exe"
   
+  ; 4. ລຶບ Shortcuts
+  Delete "$DESKTOP\${APPNAME}.lnk"
+  Delete "$SMSTARTUP\${APPNAME}.lnk"
+  RMDir /r "$SMPROGRAMS\${APPNAME}"
+
   ; ລຶບ Folder ຫຼັກ (RMDir ຈະລຶບໄດ້ກໍຕໍ່ເມື່ອ Folder ວ່າງ)
+  RMDir /r "$INSTDIR\view"
   RMDir "$INSTDIR"
 
   ; ລຶບ Registry
