@@ -1,42 +1,121 @@
-const express = require('express');
-const cors = require('cors');
-const bodyParser = require('body-parser');
 const fs = require('fs');
 const path = require('path');
 const os = require('os');
-const { exec } = require('child_process');
-const escpos = require('escpos');
-const USB = require('escpos-usb');
-const { SerialPort } = require('serialport'); // NEW: Import SerialPort
-const EscposSerial = require('escpos-serialport'); // NEW: Import EscposSerial adapter
+const util = require('util');
 
+// ==========================================
+// CRITICAL: LOGGING INIT (MUST BE FIRST)
+// ==========================================
 
-const app = express();
-const http = require('http').createServer(app); // Wrap express with http server
-const io = require('socket.io')(http, {
-    cors: { origin: "*" }
-});
-
-// --- ຕັ້ງຄ່າ Middleware ---
-app.use(cors({ origin: true, credentials: true }));
-app.use(bodyParser.json({ limit: '20mb' }));
-app.use(bodyParser.urlencoded({ limit: '20mb', extended: true }));
-
-const PORT = 9100;
-const IS_WINDOWS = os.platform() === 'win32';
-
-// ຟັງຊັນຊອກຫາ Path ຂອງ Folder ທີ່ໄຟລ໌ .exe ຕັ້ງຢູ່
 function getAppRootPath() {
     if (process.pkg) {
-        // Running as a packaged executable (e.g., PosBridge.exe)
         return path.dirname(process.execPath);
     } else {
-        // Running in development mode (e.g., node server.js)
-        // __dirname points to the directory of the current script file
         return __dirname;
     }
 }
 
+const LOG_FILE = path.join(getAppRootPath(), 'pos-bridge-debug.log');
+
+function logToFile(type, args) {
+    const timestamp = new Date().toISOString();
+    const message = util.format(...args);
+    const logLine = `[${timestamp}] [${type}] ${message}\n`;
+    
+    // Try main log file
+    try {
+        fs.appendFileSync(LOG_FILE, logLine);
+    } catch (e) {
+        // Try temp dir fallback
+        try {
+            fs.appendFileSync(path.join(os.tmpdir(), 'pos-bridge-debug.log'), logLine);
+        } catch (e2) {}
+    }
+}
+
+// Global Exception Handlers (EARLY)
+process.on('uncaughtException', (err) => {
+    logToFile('FATAL', ['UNCAUGHT EXCEPTION:', err]);
+    console.error('UNCAUGHT EXCEPTION:', err);
+    // Keep process alive if possible, or let it crash after logging
+});
+
+process.on('unhandledRejection', (reason, promise) => {
+    logToFile('ERROR', ['UNHANDLED REJECTION:', reason]);
+    console.error('UNHANDLED REJECTION:', reason);
+});
+
+// Override Console
+const originalLog = console.log;
+const originalError = console.error;
+const originalWarn = console.warn;
+
+console.log = function(...args) {
+    originalLog.apply(console, args);
+    logToFile('INFO', args);
+};
+console.error = function(...args) {
+    originalError.apply(console, args);
+    logToFile('ERROR', args);
+};
+console.warn = function(...args) {
+    originalWarn.apply(console, args);
+    logToFile('WARN', args);
+};
+
+console.log('--- STARTING POS BRIDGE APP ---');
+console.log('Node Version:', process.version);
+console.log('Platform:', os.platform(), 'Arch:', os.arch());
+console.log('App Root Path:', getAppRootPath());
+
+// ==========================================
+// MODULE IMPORTS & SAFE LOADER
+// ==========================================
+const express = require('express');
+const cors = require('cors');
+const bodyParser = require('body-parser');
+const { exec, spawn } = require('child_process');
+
+// Native Modules (May fail in pkg)
+let escpos, USB, SerialPort, EscposSerial;
+try {
+    escpos = require('escpos');
+    console.log('[Module] escpos loaded');
+} catch (e) { console.error('[Module] Failed to load escpos:', e.message); }
+
+try {
+    USB = require('escpos-usb');
+    console.log('[Module] escpos-usb loaded');
+} catch (e) { console.error('[Module] Failed to load escpos-usb:', e.message); }
+
+try {
+    const sp = require('serialport');
+    SerialPort = sp.SerialPort;
+    console.log('[Module] serialport loaded');
+} catch (e) { console.error('[Module] Failed to load serialport:', e.message); }
+
+try {
+    EscposSerial = require('escpos-serialport');
+    console.log('[Module] escpos-serialport loaded');
+} catch (e) { console.error('[Module] Failed to load escpos-serialport:', e.message); }
+
+
+const app = express();
+const http = require('http').createServer(app);
+// Socket.io removed in favor of SSE
+
+
+
+
+
+
+const IS_WINDOWS = os.platform() === 'win32';
+
+// --- ຕັ້ງຄ່າ Middleware ---
+
+app.use(cors({ origin: "*" })); // Allow all origins
+app.use(bodyParser.json({ limit: '20mb' }));
+app.use(bodyParser.urlencoded({ limit: '20mb', extended: true }));
 
 // NEW: Load configuration from config.json
 let config = {};
@@ -52,6 +131,7 @@ try {
 
 // Configuration for Laravel API Polling
 // Precedence: config.json > environment variable > hardcoded default
+const PORT = parseInt(config.APP_PORT) || 9100; // NEW: ໂຫຼດຄ່າຈາກ config.json
 const LARAVEL_API_URL = config.LARAVEL_API_URL ;
 const POLLING_INTERVAL = parseInt(config.POLLING_INTERVAL_MS);
 const ENABLE_ALERT_SOUND = config.ENABLE_ALERT_SOUND === true; // NEW: ໂຫຼດຄ່າຈາກ config.json, ໃຫ້ແນ່ໃຈວ່າເປັນ boolean
@@ -65,7 +145,13 @@ const BROWSER_PATH = config.BROWSER_PATH;
 const CUSTOMER_VIEW_URL = config.CUSTOMER_VIEW_URL || `http://localhost:${PORT}/view`;
 const WINDOW_POSITION = config.WINDOW_POSITION || "0,0";
 
+
+
 let isProcessingJobs = false; // Flag to prevent concurrent job processing
+
+let lastCartState = null;     // NEW: Store last cart state
+let lastAdsState = null;      // NEW: Store last ads state
+
 
 
 // === 1. ຟັງຊັນດຶງລາຍຊື່ Printer (ຮັກສາຄວາມສາມາດເດີມ + Universal) ===
@@ -101,8 +187,8 @@ function printFileWrapper(filePath, printerName) {
                 return reject(new Error(`ບໍ່ພົບ SumatraPDF.exe ຢູ່ທີ່: ${sumatraPath}`));
             }
 
-            // ສັ່ງພິມແບບ Silent ຜ່ານ SumatraPDF
-            const command = `"${sumatraPath}" -print-to "${printerName}" -silent "${filePath}"`;
+            // ສັ່ງພິມແບບ Silent ຜ່ານ SumatraPDF ພ້ອມກັບ setting noscale (ບໍ່ຍໍ້ຂະໜາດ)
+            const command = `"${sumatraPath}" -print-to "${printerName}" -print-settings "noscale" -silent "${filePath}"`;
             exec(command, (error, stdout) => {
                 if (error) return reject(error);
                 resolve(stdout);
@@ -347,6 +433,7 @@ app.get('/list-printers', async (req, res) => {
 // ສັ່ງເປີດລິ້ນຊັກ (ຮັກສາຟັງຊັ່ນເດີມຂອງທ່ານໄວ້)
 app.post('/hardware/open-drawer', (req, res) => {
     try {
+        if (!USB || !escpos) throw new Error('USB or escpos module not loaded');
         const device = new USB(); 
         const escposPrinter = new escpos.Printer(device);
         
@@ -371,11 +458,49 @@ app.post('/hardware/open-drawer', (req, res) => {
 // 1. Serve Static Files (The HTML View)
 app.use('/view', express.static(path.join(getAppRootPath(), 'view')));
 
-// 2. Socket Connection
-io.on('connection', (socket) => {
-    console.log('[Socket] New client connected:', socket.id);
-    socket.on('disconnect', () => {
-        console.log('[Socket] Client disconnected:', socket.id);
+// --------------------------------------------------------------------------
+// REPLACED SOCKET.IO WITH SERVER-SENT EVENTS (SSE)
+// --------------------------------------------------------------------------
+
+let sseClients = [];
+
+// Helper: Broadcast data to all connected SSE clients
+function broadcastToClients(type, data) {
+    const message = `event: ${type}\ndata: ${JSON.stringify(data)}\n\n`;
+    sseClients.forEach(client => client.res.write(message));
+}
+
+// 2. SSE Endpoint
+app.get('/events', (req, res) => {
+    // Set headers for SSE
+    res.writeHead(200, {
+        'Content-Type': 'text/event-stream',
+        'Cache-Control': 'no-cache',
+        'Connection': 'keep-alive',
+    });
+
+    console.log('[SSE] New client connected');
+
+    // Send initial state
+    if (lastCartState) {
+        res.write(`event: cart:update\ndata: ${JSON.stringify(lastCartState)}\n\n`);
+    }
+    if (lastAdsState) {
+        res.write(`event: ads:update\ndata: ${JSON.stringify(lastAdsState)}\n\n`);
+    }
+
+    // Add client to list
+    const clientId = Date.now();
+    const newClient = {
+        id: clientId,
+        res
+    };
+    sseClients.push(newClient);
+
+    // Clean up on disconnect
+    req.on('close', () => {
+        console.log(`[SSE] Client ${clientId} disconnected`);
+        sseClients = sseClients.filter(c => c.id !== clientId);
     });
 });
 
@@ -383,9 +508,10 @@ io.on('connection', (socket) => {
 app.post('/display/update-cart', (req, res) => {
     // Expected Payload: { items: [], totalQty, totalAmount, qrCode }
     const data = req.body;
+    lastCartState = data; // Save to state
     console.log('[Display] Updating cart:', data.totalAmount);
     
-    io.emit('cart:update', data); // Broadcast to all connected screens
+    broadcastToClients('cart:update', data); // Broadcast via SSE
     res.json({ success: true, message: 'Cart updated' });
 });
 
@@ -393,22 +519,30 @@ app.post('/display/update-cart', (req, res) => {
 app.post('/display/ads', (req, res) => {
     // Expected Payload: { type: 'image'|'video', url: '...' }
     const data = req.body;
+    lastAdsState = data; // Save to state
     console.log('[Display] Updating ads:', data.url);
     
-    io.emit('ads:update', data);
+    broadcastToClients('ads:update', data);
     res.json({ success: true, message: 'Ads updated' });
 });
 
 // 5. API to Clear Display
 app.post('/display/clear', (req, res) => {
-    io.emit('display:clear');
+    lastCartState = null; // Clear state
+    broadcastToClients('display:clear', {});
     res.json({ success: true, message: 'Display cleared' });
 });
+
+
+// 6. Auto-Launch Browser Logic
+
+
 
 
 // NEW: Endpoint to list all Serial Ports (for VFD detection)
 app.get('/hardware/ports', async (req, res) => {
     try {
+        if (!SerialPort) throw new Error('SerialPort module not loaded');
         const ports = await SerialPort.list();
         res.json({ success: true, ports: ports });
     } catch (err) {
@@ -426,6 +560,7 @@ app.post('/hardware/display', async (req, res) => {
     }
 
     try {
+        if (!EscposSerial || !escpos) throw new Error('EscposSerial or escpos module not loaded');
         // Create Serial connection
         const device = new EscposSerial(VFD_PORT, { baudRate: VFD_BAUDRATE });
         const printer = new escpos.Printer(device);
@@ -501,6 +636,7 @@ app.post('/hardware/display/clear', async (req, res) => {
     }
 
     try {
+        if (!EscposSerial || !escpos) throw new Error('EscposSerial or escpos module not loaded');
         const device = new EscposSerial(VFD_PORT, { baudRate: VFD_BAUDRATE });
         const printer = new escpos.Printer(device);
 
@@ -520,9 +656,31 @@ app.post('/hardware/display/clear', async (req, res) => {
     }
 });
 
+// Proxy for local media files
+app.get('/proxy-media', (req, res) => {
+    const filePath = req.query.path;
+    if (!filePath) {
+        return res.status(400).send('Missing path parameter');
+    }
+    
+    console.log(`[Proxy] Request for: ${filePath}`);
+
+    // Security check logic...
+    if (fs.existsSync(filePath)) {
+        res.sendFile(filePath);
+    } else {
+        console.error(`[Proxy] File not found: ${filePath}`);
+        res.status(404).send('File not found');
+    }
+});
+
+
 // ສັ່ງພິມ PDF
 app.post('/print/pdf', async (req, res) => {
-    const { pdfBase64, printerName } = req.body;
+    // Support both camelCase (internal/standard) and snake_case (Laravel/External)
+     // content is often used for base64 in some integrations
+    const pdfBase64 = req.body.pdfBase64 || req.body.content || req.body.data;
+    const printerName = req.body.printerName || req.body.printer_name;
     
     if (!pdfBase64 || !printerName) {
         return res.status(400).json({ success: false, message: 'Missing PDF data or printer name.' });
@@ -549,38 +707,77 @@ app.post('/print/pdf', async (req, res) => {
 function launchCustomerDisplay() {
     if (!ENABLE_CUSTOMER_VIEW || !BROWSER_PATH) return;
 
-    console.log('[Display] Launching Customer View Kiosk...');
-    
-    // Command to open Chrome in Kiosk mode
-    // --app=URL : Opens in app mode
-    // --kiosk : Full screen
-    // --window-position=x,y : Position on extended monitor
-    // --user-data-dir : Separate profile to avoid conflicts
-    
-    const userDataDir = path.join(os.tmpdir(), 'pos-bridge-kiosk');
-    // Ensure dir exists
-    if (!fs.existsSync(userDataDir)) {
-        try { fs.mkdirSync(userDataDir); } catch(e){}
+    console.log('[Display] Checking for browser at:', BROWSER_PATH);
+    if (!fs.existsSync(BROWSER_PATH)) {
+        console.error('[Display] Chrome not found at configured path. Please check config.json.');
+        return;
     }
 
+    console.log('[Display] Launching Customer View Kiosk...');
+    
+    // Use a local directory for Chrome's profile to avoid permission issues in %TEMP%
+    const userDataDir = path.join(getAppRootPath(), '_chrome_cache');
+    
+    // Ensure dir exists
+    if (!fs.existsSync(userDataDir)) {
+        try { 
+            fs.mkdirSync(userDataDir, { recursive: true }); 
+            console.log(`[Display] Created Chrome cache directory.`);
+        } catch(e){
+            console.error(`[Display] Failed to create cache directory: ${e.message}`);
+        }
+    }
+
+    // Arguments for spawn - Split flags and values to ensure correct quoting by Node
     const args = [
         `--app=${CUSTOMER_VIEW_URL}`,
         `--window-position=${WINDOW_POSITION}`,
-        `--kiosk`,
-        `--user-data-dir="${userDataDir}"`, // Use quotes for path with spaces
-        `--no-first-run`,
-        `--no-default-browser-check`
+        '--kiosk',
+        '--user-data-dir=' + userDataDir, // Pass as single string, Node handles quoting if needed
+        '--no-first-run',
+        '--no-default-browser-check',
+        '--disable-infobars',
+        '--disable-session-crashed-bubble',
+        '--overscroll-history-navigation=0',
+        '--disable-pinch',
+        '--remote-allow-origins=*' // Add this to help with some CORS/local restrictions
     ];
 
-    const command = `"${BROWSER_PATH}" ${args.join(' ')}`;
-    console.log(`[Display] Executing: ${command}`);
+    console.log(`[Display] Spawning: "${BROWSER_PATH}" with args:`, args);
 
-    exec(command, (error) => {
-        if (error) {
-            console.error('[Display] Error launching browser:', error.message);
-        }
-    });
+    try {
+        const chromeProcess = spawn(BROWSER_PATH, args, {
+            detached: true,
+            stdio: ['ignore', 'pipe', 'pipe'] // Capture stdout/stderr
+        });
+
+        chromeProcess.stdout.on('data', (data) => {
+            console.log(`[Chrome STDOUT] ${data}`);
+        });
+
+        chromeProcess.stderr.on('data', (data) => {
+            console.error(`[Chrome STDERR] ${data}`);
+        });
+        
+        chromeProcess.on('error', (err) => {
+            console.error(`[Display] Failed to start Chrome process: ${err.message}`);
+        });
+
+        chromeProcess.on('exit', (code) => {
+            if (code !== 0) {
+                 console.error(`[Display] Chrome process exited with code ${code}`);
+            }
+        });
+
+        chromeProcess.unref(); 
+
+        console.log('[Display] Chrome process spawned successfully (detached).');
+    } catch (error) {
+        console.error('[Display] Chrome Launch Error (spawn):', error.message);
+    }
 }
+
+
 
 // Change app.listen to server.listen (http server)
 if (require.main === module) {
@@ -603,8 +800,8 @@ if (require.main === module) {
 
         // Launch Customer View if enabled
         if (ENABLE_CUSTOMER_VIEW) {
-            // Delay slightly to ensure server is ready
-            setTimeout(launchCustomerDisplay, 2000);
+            // Delay slightly to ensure server is ready (Increased to 5s)
+            setTimeout(launchCustomerDisplay, 5000);
         }
     });
 }

@@ -1,4 +1,7 @@
-const socket = io();
+// Socket.io removed in favor of SSE
+// const socket = io(window.location.origin); 
+
+
         
 // Element References
 const cartContainer = document.getElementById('cart-container');
@@ -11,9 +14,12 @@ const adImage = document.getElementById('ad-image');
 const adVideo = document.getElementById('ad-video');
 const qrSection = document.getElementById('payment-qr');
 const qrImage = document.getElementById('qr-image');
+const socketStatus = document.getElementById('socket-status'); // NEW
+
 
 // State
-let isIdle = true;
+let isSocketConnected = false;
+let slideshowInterval = null; // Track slideshow timert isIdle = true;
 let idleTimer = null;
 
 // Utilities
@@ -68,21 +74,13 @@ function renderCart(cartItems) {
     cartContainer.scrollTop = cartContainer.scrollHeight;
 }
 
-// --- Socket Events ---
 
-socket.on('connect', () => {
-    console.log('Connected to POS Bridge');
-});
 
-// 1. UPDATE CART
-socket.on('cart:update', (data) => {
-    console.log('Cart Update:', data);
-    
-    // Update Text
+// Helper to reuse update logic
+function handleCartUpdate(data) {
     totalQtyEl.innerText = data.totalQty || 0;
     totalAmountEl.innerText = formatCurrency(data.totalAmount || 0);
 
-    // Update Discount
     if (data.totalDiscount && data.totalDiscount > 0) {
         totalDiscountEl.innerText = formatCurrency(data.totalDiscount);
         discountRow.classList.remove('hidden');
@@ -90,45 +88,53 @@ socket.on('cart:update', (data) => {
         discountRow.classList.add('hidden');
     }
     
-    // Render Items
     renderCart(data.items);
 
-    // Handle QR
     if (data.qrCode) {
         qrImage.src = data.qrCode;
         qrSection.classList.remove('hidden');
     } else {
         qrSection.classList.add('hidden');
     }
+}
 
-    // Switch to Active Mode (wake up from idle)
-    isIdle = false;
-    
-    // Reset Idle Timer
-    if (idleTimer) clearTimeout(idleTimer);
-    idleTimer = setTimeout(() => {
-        isIdle = true;
-    }, 60000); // 1 minute idle
-});
+// Helper to determine if URL is local or remote and proxy if needed
+function getMediaUrl(src) {
+    if (!src) return '';
+    // Check if remote URL (http/https)
+    if (src.startsWith('http://') || src.startsWith('https://')) {
+        return src;
+    }
+    // Check if local absolute path (Unix '/' or Windows 'C:')
+    // Also handling potential double backslashes which might come from JSON
+    if (src.startsWith('/') || /^[a-zA-Z]:/.test(src) || src.startsWith('\\')) {
+        return `/proxy-media?path=${encodeURIComponent(src)}`;
+    }
+    // Default (relative or other)
+    return src;
+}
 
-// 2. ADS UPDATE
-let slideshowInterval = null;
-let currentSlideIndex = 0;
-let slideshowImages = [];
-
-socket.on('ads:update', (data) => {
-    console.log('Ads Update:', data);
+function handleAdsUpdate(data) {
+    if (!data) return;
+    console.log('[Ads] Updating:', data);
     
     // Clear existing slideshow
     if (slideshowInterval) clearInterval(slideshowInterval);
     slideshowInterval = null;
 
+    const adImage = document.getElementById('ad-image');
+    const adVideo = document.getElementById('ad-video');
+
     if (data.type === 'video') {
         adImage.classList.add('hidden');
-        adVideo.src = data.url;
+        adVideo.src = getMediaUrl(data.url);
         adVideo.classList.remove('hidden');
-        adVideo.play();
+        
+        // Attempt to play (browser might block auto-play with sound, but usually OK in kiosk/interaction)
+        adVideo.play().catch(e => console.warn('Video autoplay blocked:', e));
+        
     } else {
+        // Image or Slideshow
         // Stop video
         adVideo.pause();
         adVideo.classList.add('hidden');
@@ -138,43 +144,109 @@ socket.on('ads:update', (data) => {
         const isSlideshow = Array.isArray(data.url) || (data.urls && Array.isArray(data.urls));
         
         if (isSlideshow) {
-            slideshowImages = data.urls || data.url;
+            slideshowImages = (data.urls || data.url).map(url => getMediaUrl(url));
             currentSlideIndex = 0;
             const duration = data.duration || 5000;
 
             if (slideshowImages.length > 0) {
                 // Show first image immediately
                 adImage.src = slideshowImages[0];
+                adImage.style.opacity = 1;
                 
                 // Start Timer
                 slideshowInterval = setInterval(() => {
                     currentSlideIndex = (currentSlideIndex + 1) % slideshowImages.length;
-                    // Fade out
+                    
+                    // Simple fade out/in effect
                     adImage.style.opacity = 0; 
                     
                     setTimeout(() => {
                         adImage.src = slideshowImages[currentSlideIndex];
-                        // Fade in (after loading)
+                        // Fade in once loaded
                         adImage.onload = () => {
                             adImage.style.opacity = 1;
                         };
-                    }, 500); // 0.5s fade out transition matches/simulates transition
+                        adImage.onerror = (e) => {
+                             console.error('[Ads] Error loading image:', adImage.src, e);
+                             // Try to show next slide immediately if failure
+                        };
+                    }, 500); // Wait for fade out to complete
 
                 }, duration);
             }
         } else {
              // Single Image
-             adImage.src = data.url;
+             adImage.src = getMediaUrl(data.url);
              adImage.style.opacity = 1;
+             adImage.onerror = (e) => {
+                console.error('[Ads] Error loading single image:', adImage.src, e);
+             };
         }
     }
-});
+}
 
-// 3. CLEAR / RESET
-socket.on('display:clear', () => {
+
+
+// --- SERVER-SENT EVENTS (SSE) SETUP ---
+function setupSSE() {
+    const evtSource = new EventSource('/events');
+
+    evtSource.onopen = function() {
+        isSocketConnected = true; 
+        console.log('%c[SSE] Connected to POS Bridge', 'color: green; font-weight: bold');
+        
+        // Visual: Green Dot + Tooltip
+        socketStatus.classList.remove('bg-red-500', 'bg-orange-500');
+        socketStatus.classList.add('bg-green-500', 'shadow-[0_0_8px_rgba(34,197,94,0.6)]');
+        socketStatus.title = "SSE Connected (Live Stream)";
+    };
+
+    evtSource.onerror = function(err) {
+        isSocketConnected = false;
+        console.error('[SSE] Connection Error', err);
+        
+        // Visual: Red Dot
+        socketStatus.classList.remove('bg-green-500', 'shadow-[0_0_8px_rgba(34,197,94,0.6)]');
+        socketStatus.classList.add('bg-red-500');
+        socketStatus.title = "Connection Lost - Retrying...";
+    };
+
+    // Helper: Flash indicator on data receive
+    function flashActivity() {
+        socketStatus.classList.add('scale-150', 'brightness-150');
+        setTimeout(() => {
+            socketStatus.classList.remove('scale-150', 'brightness-150');
+        }, 200);
+    }
+
+    // 1. Cart Update
+    evtSource.addEventListener('cart:update', (e) => {
+        const data = JSON.parse(e.data);
+        console.log('%c[SSE] Cart Update', 'color: blue', data);
+        flashActivity();
+        handleCartUpdate(data);
+    });
+
+    // 2. Ads Update
+    evtSource.addEventListener('ads:update', (e) => {
+        const data = JSON.parse(e.data);
+        console.log('%c[SSE] Ads Update', 'color: purple', data);
+        flashActivity();
+        handleAdsUpdate(data);
+    });
+
+    // 3. Clear Display
+    evtSource.addEventListener('display:clear', () => {
+        flashActivity();
         renderCart([]);
         totalQtyEl.innerText = '0';
         totalAmountEl.innerText = '0';
         discountRow.classList.add('hidden');
         qrSection.classList.add('hidden');
-});
+    });
+}
+
+// Start SSE
+setupSSE();
+
+

@@ -123,16 +123,20 @@ curl http://localhost:9100/list-printers
 curl -X POST http://localhost:9100/print/pdf \
   -H "Content-Type: application/json" \
   -d '{
-    "printerName": "Rongta RP80",
-    "pdfBase64": "JVBERi0xLjQKJ..."
+    "printer_name": "Rongta RP80",
+    "content": "JVBERi0xLjQKJ..."
   }'
 ```
+
+**\*Note**: Endpoint supports aliases: `printer_name` (or `printerName`) and `content` (or `pdfBase64`).\*
+
+````
 
 ### 3. ເປີດລິ້ນຊັກເງິນ (Cash Drawer)
 
 ```bash
 curl -X POST http://localhost:9100/hardware/open-drawer
-```
+````
 
 ### 4. ລະບົບສຽງແຈ້ງເຕືອນ (Sound Alerts)
 
